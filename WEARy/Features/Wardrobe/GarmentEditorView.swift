@@ -27,6 +27,8 @@ struct GarmentEditorView: View {
     @State private var size: String
     @State private var season: String
     @State private var status: GarmentStatus
+    @State private var keepAdding = false
+    @State private var showingSavedConfirmation = false
     @State private var saveError: String?
 
     init(garment: Garment? = nil) {
@@ -57,6 +59,7 @@ struct GarmentEditorView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        Toggle("저장 후 다음 옷 등록", isOn: $keepAdding)
                     } footer: {
                         Text(mode == .quick
                              ? "기존 옷장은 사진과 기본 정보만 빠르게 등록할 수 있어요."
@@ -146,6 +149,11 @@ struct GarmentEditorView: View {
                     }
                 }
             }
+            .alert("옷을 저장했어요", isPresented: $showingSavedConfirmation) {
+                Button("다음 옷 등록", role: .cancel) { }
+            } message: {
+                Text("사진과 기본 정보를 이어서 입력해 주세요.")
+            }
         }
     }
 
@@ -182,10 +190,31 @@ struct GarmentEditorView: View {
 
         do {
             try modelContext.save()
-            dismiss()
+            if garment == nil && keepAdding {
+                resetForNextGarment()
+                showingSavedConfirmation = true
+            } else {
+                dismiss()
+            }
         } catch {
             saveError = "저장하지 못했어요. 다시 시도해 주세요."
         }
+    }
+
+    private func resetForNextGarment() {
+        selectedPhoto = nil
+        imageData = nil
+        name = ""
+        brand = ""
+        category = .top
+        colorName = "블랙"
+        colorHex = "343434"
+        purchaseDate = .now
+        purchasePrice = ""
+        size = ""
+        season = "사계절"
+        status = .active
+        saveError = nil
     }
 }
 

@@ -36,4 +36,18 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
     scheme:
-      testTargets: []
+      testTargets:
+        - WEARyTests
+  WEARyTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: WEARyTests
+    dependencies:
+      - target: WEARy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weary.prototype.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/WEARy.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WEARy"
+        BUNDLE_LOADER: "$(TEST_HOST)"
