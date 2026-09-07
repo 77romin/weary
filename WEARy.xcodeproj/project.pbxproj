@@ -11,6 +11,7 @@
 		1B80746C4352690D940C43A5 /* GarmentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3C149F4F711AB873F2E153 /* GarmentDetailView.swift */; };
 		330F17106A6BC2C300502282 /* SampleDataSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77CCB18CF598C0B07C2C85CA /* SampleDataSeeder.swift */; };
 		33AE3F931E5E5C770142C893 /* OutfitAnalyzing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */; };
+		44848AC067F5ED6A2D9E78D2 /* MonthOutfitCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EFCC9181CDF1F27AC45F90 /* MonthOutfitCalendarView.swift */; };
 		4678A2CB74D7BB951FCC1581 /* OutfitFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5812FFDF4ED64C5045A858F /* OutfitFlowTests.swift */; };
 		6271A2A1CE369A5C51B74703 /* WEARyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AD6B04DD18E16C7DF385DB /* WEARyApp.swift */; };
 		6C3EDF65005EB3E3434A6D40 /* GarmentArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8201B35CDC2D7F227B435F /* GarmentArtwork.swift */; };
@@ -20,6 +21,7 @@
 		AAB09A3C8C75C4DE40D1C517 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2128FB884A55142F4E78D46E /* FeedView.swift */; };
 		BA850FB60E804B398FEF164B /* WardrobeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39A1BD1D09B5751BB982B218 /* WardrobeView.swift */; };
 		D7E11045D5E679DA98366A3B /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71EA2D10AF32EF2F65BC18BD /* ProfileView.swift */; };
+		DC1E9D0B4493AD02683909EB /* GarmentCutoutService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2FDFB74E5CF511FA35BC26 /* GarmentCutoutService.swift */; };
 		EFC26848D803CAA43BD977E9 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38C71C200731C375660EF17 /* CaptureView.swift */; };
 		F9E583AF2461FC6F15B553A4 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59C5442CDF1AD356B1123FE1 /* RootTabView.swift */; };
 		FE65C978383ACCB7DB2E2D7D /* GarmentEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AE57F226B78F9845A928B97 /* GarmentEditorView.swift */; };
@@ -47,10 +49,12 @@
 		59C5442CDF1AD356B1123FE1 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitAnalyzing.swift; sourceTree = "<group>"; };
 		71EA2D10AF32EF2F65BC18BD /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		76EFCC9181CDF1F27AC45F90 /* MonthOutfitCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthOutfitCalendarView.swift; sourceTree = "<group>"; };
 		77CCB18CF598C0B07C2C85CA /* SampleDataSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleDataSeeder.swift; sourceTree = "<group>"; };
 		86B5787FE490CB938E4B6D86 /* WEARy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WEARy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B95B430ABCABDD13607100A /* Garment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Garment.swift; sourceTree = "<group>"; };
 		9AE57F226B78F9845A928B97 /* GarmentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GarmentEditorView.swift; sourceTree = "<group>"; };
+		AA2FDFB74E5CF511FA35BC26 /* GarmentCutoutService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GarmentCutoutService.swift; sourceTree = "<group>"; };
 		C38C71C200731C375660EF17 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
 		E5812FFDF4ED64C5045A858F /* OutfitFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitFlowTests.swift; sourceTree = "<group>"; };
 		FD460AAFAE65B8AA4C82F2D5 /* WEARyTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WEARyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -69,6 +73,7 @@
 		3055307BA22313D29C1C0FB7 /* Profile */ = {
 			isa = PBXGroup;
 			children = (
+				76EFCC9181CDF1F27AC45F90 /* MonthOutfitCalendarView.swift */,
 				71EA2D10AF32EF2F65BC18BD /* ProfileView.swift */,
 			);
 			path = Profile;
@@ -141,6 +146,7 @@
 		7AE90E7CC3D4CF65DC2A7F7B /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				AA2FDFB74E5CF511FA35BC26 /* GarmentCutoutService.swift */,
 				6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */,
 			);
 			path = Services;
@@ -301,9 +307,11 @@
 				AAB09A3C8C75C4DE40D1C517 /* FeedView.swift in Sources */,
 				73DFF9DD177F48648ECF99C3 /* Garment.swift in Sources */,
 				6C3EDF65005EB3E3434A6D40 /* GarmentArtwork.swift in Sources */,
+				DC1E9D0B4493AD02683909EB /* GarmentCutoutService.swift in Sources */,
 				1B80746C4352690D940C43A5 /* GarmentDetailView.swift in Sources */,
 				FE65C978383ACCB7DB2E2D7D /* GarmentEditorView.swift in Sources */,
 				17E4EB45CA9B68F0FC439FE8 /* MarketView.swift in Sources */,
+				44848AC067F5ED6A2D9E78D2 /* MonthOutfitCalendarView.swift in Sources */,
 				910CB1F1682B2CBA66F66FFD /* Outfit.swift in Sources */,
 				33AE3F931E5E5C770142C893 /* OutfitAnalyzing.swift in Sources */,
 				D7E11045D5E679DA98366A3B /* ProfileView.swift in Sources */,

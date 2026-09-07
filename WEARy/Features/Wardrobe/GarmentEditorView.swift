@@ -17,6 +17,8 @@ struct GarmentEditorView: View {
     @State private var mode: RegistrationMode
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var imageData: Data?
+    @State private var cutoutImageData: Data?
+    @State private var isGeneratingCutout = false
     @State private var name: String
     @State private var brand: String
     @State private var category: GarmentCategory
@@ -36,6 +38,7 @@ struct GarmentEditorView: View {
         let isEditing = garment != nil
         _mode = State(initialValue: isEditing ? .purchase : .quick)
         _imageData = State(initialValue: garment?.imageData)
+        _cutoutImageData = State(initialValue: garment?.cutoutImageData)
         _name = State(initialValue: garment?.name ?? "")
         _brand = State(initialValue: garment?.brand ?? "")
         _category = State(initialValue: garment?.category ?? .top)
@@ -68,13 +71,31 @@ struct GarmentEditorView: View {
                 }
 
                 Section("옷 사진") {
-                    GarmentPhotoPreview(imageData: imageData, colorHex: colorHex)
+                    GarmentPhotoPreview(
+                        imageData: cutoutImageData ?? imageData,
+                        colorHex: colorHex,
+                        showsTransparentBackground: cutoutImageData != nil
+                    )
+
+                    if isGeneratingCutout {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("옷만 깔끔하게 분리하는 중이에요")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if cutoutImageData != nil {
+                        Label("배경 제거 완료", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                    }
 
                     PhotosPicker("사진 보관함 열기", selection: $selectedPhoto, matching: .images)
 
                     if imageData != nil {
                         Button("사진 제거", role: .destructive) {
                             imageData = nil
+                            cutoutImageData = nil
                             selectedPhoto = nil
                         }
                     }
@@ -138,14 +159,18 @@ struct GarmentEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("저장", action: save)
                         .fontWeight(.bold)
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGeneratingCutout)
                 }
             }
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
                 Task {
                     if let data = try? await item.loadTransferable(type: Data.self) {
-                        await MainActor.run { imageData = data }
+                        imageData = data
+                        cutoutImageData = nil
+                        isGeneratingCutout = true
+                        cutoutImageData = await GarmentCutoutService.shared.makeCutout(from: data)
+                        isGeneratingCutout = false
                     }
                 }
             }
@@ -172,6 +197,7 @@ struct GarmentEditorView: View {
             garment.season = season
             garment.status = status
             garment.imageData = imageData
+            garment.cutoutImageData = cutoutImageData
         } else {
             let newGarment = Garment(
                 name: trimmedName,
@@ -183,7 +209,8 @@ struct GarmentEditorView: View {
                 purchasePrice: mode == .purchase ? parsedPrice : nil,
                 size: mode == .purchase ? size : "",
                 season: season,
-                imageData: imageData
+                imageData: imageData,
+                cutoutImageData: cutoutImageData
             )
             modelContext.insert(newGarment)
         }
@@ -204,6 +231,8 @@ struct GarmentEditorView: View {
     private func resetForNextGarment() {
         selectedPhoto = nil
         imageData = nil
+        cutoutImageData = nil
+        isGeneratingCutout = false
         name = ""
         brand = ""
         category = .top
@@ -221,15 +250,18 @@ struct GarmentEditorView: View {
 private struct GarmentPhotoPreview: View {
     let imageData: Data?
     let colorHex: String
+    let showsTransparentBackground: Bool
 
     var body: some View {
         Group {
             if let imageData, let image = UIImage(data: imageData) {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
+                    .padding(showsTransparentBackground ? 14 : 0)
                     .frame(maxWidth: .infinity)
                     .frame(height: 240)
+                    .background(Color(hex: "E9E5DD"))
                     .clipShape(RoundedRectangle(cornerRadius: 18))
             } else {
                 VStack(spacing: 10) {

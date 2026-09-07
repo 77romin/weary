@@ -49,7 +49,8 @@ final class Garment {
     var season: String
     var statusRaw: String
     var createdAt: Date
-    var imageData: Data?
+    @Attribute(.externalStorage) var imageData: Data?
+    @Attribute(.externalStorage) var cutoutImageData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \OutfitItem.garment)
     var outfitItems: [OutfitItem] = []
@@ -67,7 +68,8 @@ final class Garment {
         season: String = "사계절",
         status: GarmentStatus = .active,
         createdAt: Date = .now,
-        imageData: Data? = nil
+        imageData: Data? = nil,
+        cutoutImageData: Data? = nil
     ) {
         self.id = id
         self.name = name
@@ -82,6 +84,7 @@ final class Garment {
         statusRaw = status.rawValue
         self.createdAt = createdAt
         self.imageData = imageData
+        self.cutoutImageData = cutoutImageData
     }
 
     var category: GarmentCategory {

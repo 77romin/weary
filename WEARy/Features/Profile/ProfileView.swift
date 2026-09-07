@@ -40,6 +40,18 @@ struct ProfileView: View {
                                 .padding(18)
                                 .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: WEARyTheme.cornerRadius))
                         }
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("나의 착장 캘린더")
+                                    .font(.headline)
+                                Spacer()
+                                Text("날짜를 눌러 자세히 보기")
+                                    .font(.caption)
+                                    .foregroundStyle(WEARyTheme.secondaryInk)
+                            }
+                            MonthOutfitCalendarView(outfits: outfits)
+                        }
                     }
                     .padding(20)
                 }

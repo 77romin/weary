@@ -13,7 +13,13 @@ struct GarmentArtwork: View {
                 .frame(width: height * 0.86)
                 .offset(x: height * 0.35, y: -height * 0.3)
 
-            if let data = garment.imageData,
+            if let data = garment.cutoutImageData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(height * 0.08)
+            } else if let data = garment.imageData,
                let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
@@ -28,6 +34,30 @@ struct GarmentArtwork: View {
         .frame(height: height)
         .clipped()
         .accessibilityLabel("\(garment.name) 이미지")
+    }
+}
+
+struct GarmentCutoutThumbnail: View {
+    let garment: Garment
+
+    var body: some View {
+        Group {
+            if let data = garment.cutoutImageData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: garment.category.symbol)
+                    .resizable()
+                    .scaledToFit()
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(WEARyTheme.ink.opacity(0.82))
+                    .padding(3)
+                    .background(Color(hex: garment.colorHex).opacity(0.66), in: RoundedRectangle(cornerRadius: 5))
+            }
+        }
+        .accessibilityLabel(garment.name)
     }
 }
 
