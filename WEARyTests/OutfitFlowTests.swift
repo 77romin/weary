@@ -54,4 +54,32 @@ struct OutfitFlowTests {
 
         #expect(OutfitSelection.uniqueGarmentIDs(in: groups).isEmpty)
     }
+
+    @Test("게시물 좋아요와 댓글 상태를 변경할 수 있다")
+    func communityPostInteractionsUpdate() {
+        let post = CommunityPost(
+            authorName: "테스터",
+            authorHandle: "test", authorInitials: "T",
+            caption: "테스트 룩", likeCount: 3
+        )
+
+        post.isLiked = true
+        post.likeCount += 1
+        post.appendComment("나: 멋진 룩이에요")
+
+        #expect(post.likeCount == 4)
+        #expect(post.comments == ["나: 멋진 룩이에요"])
+    }
+
+    @Test("마켓 상태를 판매 중에서 예약 중으로 변경할 수 있다")
+    func marketListingStatusUpdates() {
+        let listing = MarketListing(
+            sellerName: "판매자", title: "재킷", detailText: "상세",
+            price: 50_000
+        )
+
+        listing.status = .reserved
+
+        #expect(listing.status == .reserved)
+    }
 }

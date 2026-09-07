@@ -4,6 +4,8 @@ import SwiftUI
 struct ProfileView: View {
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
+    @Query(filter: #Predicate<CommunityPost> { $0.authorHandle == "my.weary" })
+    private var myPosts: [CommunityPost]
 
     var body: some View {
         NavigationStack {
@@ -28,7 +30,7 @@ struct ProfileView: View {
                         HStack(spacing: 10) {
                             MetricPill(value: "\(garments.count)", label: "옷")
                             MetricPill(value: "\(outfits.count)", label: "착장")
-                            MetricPill(value: "2", label: "게시물")
+                            MetricPill(value: "\(myPosts.count)", label: "게시물")
                         }
 
                         VStack(alignment: .leading, spacing: 12) {

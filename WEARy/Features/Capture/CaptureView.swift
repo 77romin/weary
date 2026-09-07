@@ -18,6 +18,8 @@ struct CaptureView: View {
     @State private var editingGroupID: UUID?
     @State private var showingGarmentPicker = false
     @State private var showingNewGarment = false
+    @State private var publishToFeed = false
+    @State private var postCaption = "오늘의 WEARy"
 
     private let analyzer: any OutfitAnalyzing = DemoOutfitAnalyzer()
 
@@ -187,6 +189,21 @@ struct CaptureView: View {
                 .buttonStyle(.bordered)
                 .tint(.white)
 
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("커뮤니티에 공개", isOn: $publishToFeed)
+                        .font(.subheadline.weight(.bold))
+                        .tint(WEARyTheme.lime)
+                    if publishToFeed {
+                        TextField("오늘의 룩을 소개해 주세요", text: $postCaption, axis: .vertical)
+                            .padding(12)
+                            .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    Text("개인 착장 기록은 기본적으로 나만 볼 수 있어요.")
+                        .font(.caption).foregroundStyle(.white.opacity(0.55))
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
+
                 Button(action: saveOutfit) {
                     Text("착장 기록하기 · \(selectedGarmentIDs.count)개")
                         .primaryCaptureButtonStyle()
@@ -280,7 +297,7 @@ struct CaptureView: View {
     }
 
     private func saveOutfit() {
-        let outfit = Outfit(wornAt: wornAt, photoData: photoData)
+        let outfit = Outfit(wornAt: wornAt, isPublished: publishToFeed, photoData: photoData)
         modelContext.insert(outfit)
         for garmentID in selectedGarmentIDs {
             guard let garment = garment(with: garmentID) else { continue }
@@ -293,6 +310,17 @@ struct CaptureView: View {
             ))
         }
         do {
+            if publishToFeed {
+                modelContext.insert(CommunityPost(
+                    authorName: "나",
+                    authorHandle: "my.weary",
+                    authorInitials: "ME",
+                    caption: postCaption.isEmpty ? "오늘의 WEARy" : postCaption,
+                    tags: ["오늘의룩", "WEARy"],
+                    accentHex: "C7F25B",
+                    outfit: outfit
+                ))
+            }
             try modelContext.save()
             phase = .saved
         } catch {
@@ -307,6 +335,8 @@ struct CaptureView: View {
         wornAt = .now
         groups = []
         editingGroupID = nil
+        publishToFeed = false
+        postCaption = "오늘의 WEARy"
         phase = .ready
     }
 }

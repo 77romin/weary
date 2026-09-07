@@ -8,6 +8,8 @@ struct WEARyApp: App {
             Garment.self,
             Outfit.self,
             OutfitItem.self,
+            CommunityPost.self,
+            MarketListing.self,
         ])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: false)
 

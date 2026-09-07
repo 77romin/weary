@@ -7,6 +7,7 @@ struct GarmentDetailView: View {
     let garment: Garment
     @State private var showingDeleteConfirmation = false
     @State private var showingEditor = false
+    @State private var showingListingEditor = false
 
     var body: some View {
         ScrollView {
@@ -26,6 +27,7 @@ struct GarmentDetailView: View {
                     metricsSection
                     informationSection
                     statusSection
+                    sellButton
                     deleteButton
                 }
                 .padding(20)
@@ -42,6 +44,9 @@ struct GarmentDetailView: View {
         }
         .sheet(isPresented: $showingEditor) {
             GarmentEditorView(garment: garment)
+        }
+        .sheet(isPresented: $showingListingEditor) {
+            NavigationStack { CreateListingView(garment: garment) }
         }
         .confirmationDialog(
             "이 옷을 삭제할까요?",
@@ -128,6 +133,19 @@ struct GarmentDetailView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
+    }
+
+    private var sellButton: some View {
+        Button {
+            showingListingEditor = true
+        } label: {
+            Label("이 옷 판매하기", systemImage: "tag")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(WEARyTheme.ink)
     }
 
     private func informationRow(_ title: String, value: String) -> some View {
