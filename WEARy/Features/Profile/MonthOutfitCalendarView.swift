@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct MonthOutfitCalendarView: View {
@@ -112,6 +113,7 @@ struct MonthOutfitCalendarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(isToday ? "calendar.today" : "calendar.day.\(day.number)")
         .accessibilityLabel(dayAccessibilityLabel(day, outfitCount: dayOutfits.count))
     }
 
@@ -194,8 +196,13 @@ private struct OutfitMiniature: View {
 
 private struct DayOutfitDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var posts: [CommunityPost]
     let date: Date
     let outfits: [Outfit]
+    @State private var editingOutfit: Outfit?
+    @State private var deletingOutfit: Outfit?
+    @State private var operationError: String?
 
     var body: some View {
         NavigationStack {
@@ -228,6 +235,29 @@ private struct DayOutfitDetailView: View {
             .navigationDestination(for: Garment.self) { garment in
                 GarmentDetailView(garment: garment)
             }
+            .sheet(item: $editingOutfit) { outfit in
+                OutfitEditorView(outfit: outfit)
+            }
+            .confirmationDialog(
+                "이 착장 기록을 삭제할까요?",
+                isPresented: Binding(
+                    get: { deletingOutfit != nil },
+                    set: { if !$0 { deletingOutfit = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("착장 삭제", role: .destructive) { deleteSelectedOutfit() }
+            } message: {
+                Text(deleteMessage)
+            }
+            .alert("처리하지 못했어요", isPresented: Binding(
+                get: { operationError != nil },
+                set: { if !$0 { operationError = nil } }
+            )) {
+                Button("확인") { operationError = nil }
+            } message: {
+                Text(operationError ?? "")
+            }
         }
     }
 
@@ -247,6 +277,24 @@ private struct DayOutfitDetailView: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(WEARyTheme.coral)
                 }
+                Menu {
+                    Button {
+                        editingOutfit = outfit
+                    } label: {
+                        Label("착장 수정", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        deletingOutfit = outfit
+                    } label: {
+                        Label("착장 삭제", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .foregroundStyle(WEARyTheme.ink)
+                }
+                .accessibilityLabel("착장 관리")
+                .accessibilityIdentifier("outfit.manage")
             }
 
             ForEach(outfit.items.compactMap(\.garment)) { garment in
@@ -271,5 +319,141 @@ private struct DayOutfitDetailView: View {
         }
         .padding(18)
         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: WEARyTheme.cornerRadius))
+    }
+
+    private var linkedPosts: [CommunityPost] {
+        guard let outfitID = deletingOutfit?.id else { return [] }
+        return posts.filter { $0.outfit?.id == outfitID }
+    }
+
+    private var deleteMessage: String {
+        linkedPosts.isEmpty
+            ? "포함된 옷의 착용 횟수와 캘린더 기록도 함께 갱신됩니다."
+            : "포함된 옷의 착용 횟수와 연결된 내 피드 게시물도 함께 삭제됩니다."
+    }
+
+    private func deleteSelectedOutfit() {
+        guard let outfit = deletingOutfit else { return }
+        do {
+            try OutfitRecordService.delete(outfit, linkedPosts: linkedPosts, in: modelContext)
+            deletingOutfit = nil
+            dismiss()
+        } catch {
+            operationError = "착장 기록을 삭제하지 못했어요. 다시 시도해 주세요."
+        }
+    }
+}
+
+private struct OutfitEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Garment.createdAt) private var garments: [Garment]
+
+    let outfit: Outfit
+    @State private var wornAt: Date
+    @State private var note: String
+    @State private var selectedGarmentIDs: Set<UUID>
+    @State private var saveError: String?
+
+    init(outfit: Outfit) {
+        self.outfit = outfit
+        _wornAt = State(initialValue: outfit.wornAt)
+        _note = State(initialValue: outfit.note)
+        _selectedGarmentIDs = State(initialValue: Set(outfit.items.compactMap(\.garment?.id)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("착장 정보") {
+                    DatePicker("입은 날짜와 시간", selection: $wornAt)
+                    TextField("그날의 메모", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                        .accessibilityIdentifier("outfit.note")
+                }
+
+                Section {
+                    ForEach(garments) { garment in
+                        Button {
+                            toggle(garment)
+                        } label: {
+                            HStack(spacing: 12) {
+                                GarmentCutoutThumbnail(garment: garment)
+                                    .frame(width: 48, height: 48)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(garment.name).fontWeight(.semibold)
+                                    Text("\(garment.category.rawValue) · \(garment.brand)")
+                                        .font(.caption)
+                                        .foregroundStyle(WEARyTheme.secondaryInk)
+                                }
+                                Spacer()
+                                Image(systemName: selectedGarmentIDs.contains(garment.id)
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedGarmentIDs.contains(garment.id)
+                                                     ? WEARyTheme.coral : WEARyTheme.secondaryInk)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("입은 옷 · \(selectedGarmentIDs.count)개")
+                } footer: {
+                    Text("옷을 빼거나 추가하면 착용 통계가 자동으로 다시 계산됩니다.")
+                }
+
+                if outfit.isPublished {
+                    Section {
+                        Label("현재 로컬 피드에 공개된 착장이에요.", systemImage: "person.2.fill")
+                            .foregroundStyle(WEARyTheme.coral)
+                    }
+                }
+
+                if let saveError {
+                    Section {
+                        Label(saveError, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(WEARyTheme.canvas)
+            .navigationTitle("착장 수정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장", action: save)
+                        .fontWeight(.bold)
+                        .disabled(selectedGarmentIDs.isEmpty)
+                        .accessibilityIdentifier("outfit.save")
+                }
+            }
+        }
+    }
+
+    private func toggle(_ garment: Garment) {
+        if selectedGarmentIDs.contains(garment.id) {
+            selectedGarmentIDs.remove(garment.id)
+        } else {
+            selectedGarmentIDs.insert(garment.id)
+        }
+    }
+
+    private func save() {
+        do {
+            try OutfitRecordService.update(
+                outfit,
+                wornAt: wornAt,
+                note: note,
+                selectedGarments: garments.filter { selectedGarmentIDs.contains($0.id) },
+                in: modelContext
+            )
+            dismiss()
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 }

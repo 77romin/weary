@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import WEARy
 
@@ -129,5 +130,36 @@ struct OutfitFlowTests {
 
         #expect(usage.first?.count == 1)
         #expect(garment.wearCount == 1)
+    }
+
+    @Test("착장 수정은 선택한 옷과 메모를 갱신한다")
+    @MainActor
+    func outfitEditingUpdatesItemsAndNote() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: Garment.self, Outfit.self, OutfitItem.self, CommunityPost.self, MarketListing.self,
+            configurations: configuration
+        )
+        let context = container.mainContext
+        let top = Garment(name: "티셔츠", category: .top, colorName: "화이트", colorHex: "FFFFFF")
+        let bottom = Garment(name: "데님", category: .bottom, colorName: "블루", colorHex: "7392B7")
+        let outfit = Outfit(wornAt: .now)
+        context.insert(top)
+        context.insert(bottom)
+        context.insert(outfit)
+        context.insert(OutfitItem(garment: top, outfit: outfit, source: .ai, confidence: .high))
+        try context.save()
+
+        try OutfitRecordService.update(
+            outfit,
+            wornAt: outfit.wornAt,
+            note: "비 오는 날",
+            selectedGarments: [bottom],
+            in: context
+        )
+
+        #expect(outfit.note == "비 오는 날")
+        #expect(outfit.items.compactMap(\.garment?.id) == [bottom.id])
+        #expect(bottom.wearCount == 1)
     }
 }
