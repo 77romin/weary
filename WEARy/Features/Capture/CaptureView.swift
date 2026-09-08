@@ -49,9 +49,15 @@ struct CaptureView: View {
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
                 Task {
-                    if let data = try? await item.loadTransferable(type: Data.self) {
+                    do {
+                        guard let data = try await item.loadTransferable(type: Data.self) else {
+                            phase = .failed("선택한 사진을 불러올 수 없어요. 다른 사진을 선택해 주세요.")
+                            return
+                        }
                         photoData = data
                         phase = .preview
+                    } catch {
+                        phase = .failed("사진을 불러오는 중 문제가 생겼어요. 다시 선택해 주세요.")
                     }
                 }
             }
@@ -105,6 +111,7 @@ struct CaptureView: View {
                             .foregroundStyle(.white)
                             .padding(.vertical, 10)
                     }
+                    .accessibilityIdentifier("capture.sample")
                 }
                 .padding(.horizontal, 28)
             }
@@ -127,6 +134,7 @@ struct CaptureView: View {
                     Label("내 옷장에서 찾기", systemImage: "sparkles")
                         .primaryCaptureButtonStyle()
                 }
+                .accessibilityIdentifier("capture.analyze")
             }
             .padding(22)
         }
@@ -208,6 +216,7 @@ struct CaptureView: View {
                     Text("착장 기록하기 · \(selectedGarmentIDs.count)개")
                         .primaryCaptureButtonStyle()
                 }
+                .accessibilityIdentifier("capture.save")
                 .disabled(selectedGarmentIDs.isEmpty)
                 .opacity(selectedGarmentIDs.isEmpty ? 0.45 : 1)
             }

@@ -20,6 +20,17 @@ struct OutfitFlowTests {
         #expect(result.map(\.selectedGarmentID) == [topID, bottomID])
     }
 
+    @Test("빈 옷장은 분석 실패 이유를 제공한다")
+    @MainActor
+    func analyzerReportsEmptyWardrobe() async {
+        do {
+            _ = try await DemoOutfitAnalyzer().analyze(wardrobe: [])
+            Issue.record("빈 옷장 분석은 실패해야 합니다")
+        } catch {
+            #expect(error.localizedDescription.contains("옷장"))
+        }
+    }
+
     @Test("같은 옷이 여러 그룹에 선택되어도 한 번만 저장한다")
     func duplicateSelectionsAreDeduplicated() {
         let garmentID = UUID()

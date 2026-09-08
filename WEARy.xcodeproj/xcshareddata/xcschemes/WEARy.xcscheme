@@ -50,6 +50,17 @@
                ReferencedContainer = "container:WEARy.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AA14B9D589C5962544035B18"
+               BuildableName = "WEARyUITests.xctest"
+               BlueprintName = "WEARyUITests"
+               ReferencedContainer = "container:WEARy.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

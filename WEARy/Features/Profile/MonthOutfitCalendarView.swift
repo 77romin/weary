@@ -34,6 +34,7 @@ struct MonthOutfitCalendarView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 28).stroke(WEARyTheme.line)
         }
+        .accessibilityIdentifier("profile.calendar")
         .sheet(item: $selectedDay) { selection in
             DayOutfitDetailView(
                 date: selection.date,

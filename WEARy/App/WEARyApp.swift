@@ -11,7 +11,8 @@ struct WEARyApp: App {
             CommunityPost.self,
             MarketListing.self,
         ])
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: false)
+        let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: isUITesting)
 
         do {
             return try ModelContainer(for: schema, configurations: configuration)

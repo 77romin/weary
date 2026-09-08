@@ -19,6 +19,7 @@ struct GarmentEditorView: View {
     @State private var imageData: Data?
     @State private var cutoutImageData: Data?
     @State private var isGeneratingCutout = false
+    @State private var didAttemptCutout = false
     @State private var name: String
     @State private var brand: String
     @State private var category: GarmentCategory
@@ -39,6 +40,7 @@ struct GarmentEditorView: View {
         _mode = State(initialValue: isEditing ? .purchase : .quick)
         _imageData = State(initialValue: garment?.imageData)
         _cutoutImageData = State(initialValue: garment?.cutoutImageData)
+        _didAttemptCutout = State(initialValue: garment?.imageData != nil)
         _name = State(initialValue: garment?.name ?? "")
         _brand = State(initialValue: garment?.brand ?? "")
         _category = State(initialValue: garment?.category ?? .top)
@@ -88,6 +90,10 @@ struct GarmentEditorView: View {
                         Label("배경 제거 완료", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.green)
+                    } else if didAttemptCutout && imageData != nil {
+                        Label("배경을 분리하지 못해 원본 사진으로 저장해요", systemImage: "info.circle")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
 
                     PhotosPicker("사진 보관함 열기", selection: $selectedPhoto, matching: .images)
@@ -96,6 +102,7 @@ struct GarmentEditorView: View {
                         Button("사진 제거", role: .destructive) {
                             imageData = nil
                             cutoutImageData = nil
+                            didAttemptCutout = false
                             selectedPhoto = nil
                         }
                     }
@@ -165,12 +172,20 @@ struct GarmentEditorView: View {
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
                 Task {
-                    if let data = try? await item.loadTransferable(type: Data.self) {
+                    do {
+                        guard let data = try await item.loadTransferable(type: Data.self) else {
+                            saveError = "선택한 사진을 불러올 수 없어요."
+                            return
+                        }
                         imageData = data
                         cutoutImageData = nil
+                        didAttemptCutout = false
                         isGeneratingCutout = true
                         cutoutImageData = await GarmentCutoutService.shared.makeCutout(from: data)
                         isGeneratingCutout = false
+                        didAttemptCutout = true
+                    } catch {
+                        saveError = "사진을 불러오는 중 문제가 생겼어요."
                     }
                 }
             }
@@ -233,6 +248,7 @@ struct GarmentEditorView: View {
         imageData = nil
         cutoutImageData = nil
         isGeneratingCutout = false
+        didAttemptCutout = false
         name = ""
         brand = ""
         category = .top

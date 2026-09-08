@@ -131,6 +131,16 @@ xcodebuild -project WEARy.xcodeproj \
   build
 ```
 
+전체 단위·UI 테스트는 다음과 같이 실행합니다.
+
+```bash
+xcodebuild -project WEARy.xcodeproj \
+  -scheme WEARy \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  CODE_SIGNING_ALLOWED=NO \
+  test
+```
+
 ## TO-DO-LIST
 
 ### 2026-09-08 화요일 — 기반과 옷장
@@ -181,10 +191,11 @@ xcodebuild -project WEARy.xcodeproj \
 - [x] 옷별 착장 이력 구현
 - [x] 기본 착용 통계와 1회 착용 비용 구현
 - [x] 미착용 옷과 정리 제안 구현
-- [ ] 로딩, 빈 화면 및 오류 상태 점검
-- [ ] 접근성 라벨과 Dynamic Type 기본 점검
-- [ ] 실제 iPhone과 시뮬레이터에서 핵심 흐름 테스트
-- [ ] 주요 버그 수정 및 UI 다듬기
+- [x] 로딩, 빈 화면 및 오류 상태 점검
+- [x] 접근성 라벨과 Dynamic Type 기본 점검
+- [x] 시뮬레이터 핵심 흐름 자동 UI 테스트
+- [ ] 실제 iPhone에서 핵심 흐름 테스트
+- [x] 주요 버그 수정 및 UI 다듬기
 
 ### 2026-09-13 일요일 — 시연 준비
 
