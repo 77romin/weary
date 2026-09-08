@@ -36,7 +36,7 @@ struct ProfileView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("이번 달의 발견")
                                 .font(.headline)
-                            Text("가장 자주 입은 옷은 커브드 데님이에요. 옷장 속 모든 옷이 이야기가 되도록 계속 기록해 보세요.")
+                            Text(monthlyDiscoveryText)
                                 .font(.body)
                                 .foregroundStyle(WEARyTheme.secondaryInk)
                                 .padding(18)
@@ -54,11 +54,35 @@ struct ProfileView: View {
                             }
                             MonthOutfitCalendarView(outfits: outfits)
                         }
+
+                        WardrobeInsightsView(garments: garments)
+
+                        WardrobeReviewView(garments: garments)
                     }
                     .padding(20)
                 }
             }
             .navigationTitle("MY")
         }
+    }
+
+    private var monthlyDiscoveryText: String {
+        guard let interval = Calendar.current.dateInterval(of: .month, for: .now) else {
+            return "착장을 기록하면 이번 달의 스타일을 발견할 수 있어요."
+        }
+        let ranked = garments
+            .map { garment in
+                (garment, garment.confirmedOutfitItems.filter {
+                    guard let date = $0.outfit?.wornAt else { return false }
+                    return interval.contains(date)
+                }.count)
+            }
+            .filter { $0.1 > 0 }
+            .sorted { $0.1 > $1.1 }
+
+        guard let top = ranked.first else {
+            return "아직 이번 달 착장이 없어요. 오늘의 룩부터 가볍게 남겨보세요."
+        }
+        return "이번 달에는 ‘\(top.0.name)’을 \(top.1)번 입었어요. 나의 취향이 데이터로 쌓이고 있어요."
     }
 }

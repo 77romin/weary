@@ -26,6 +26,7 @@ struct GarmentDetailView: View {
                     identitySection
                     metricsSection
                     informationSection
+                    historySection
                     statusSection
                     sellButton
                     deleteButton
@@ -125,6 +126,38 @@ struct GarmentDetailView: View {
         }
     }
 
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("이 옷을 입었던 날").font(.headline)
+                Spacer()
+                Text("총 \(garment.wearCount)회")
+                    .font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
+            }
+
+            if wornOutfits.isEmpty {
+                Label("아직 착용 기록이 없어요", systemImage: "calendar")
+                    .font(.subheadline).foregroundStyle(WEARyTheme.secondaryInk)
+                    .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(wornOutfits) { outfit in
+                            GarmentWearHistoryCard(outfit: outfit, focusedGarment: garment)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var wornOutfits: [Outfit] {
+        garment.confirmedOutfitItems
+            .compactMap(\.outfit)
+            .sorted { $0.wornAt > $1.wornAt }
+    }
+
     private var deleteButton: some View {
         Button(role: .destructive) {
             showingDeleteConfirmation = true
@@ -174,5 +207,50 @@ struct GarmentDetailView: View {
 
     private var lastWornText: String {
         garment.lastWornAt?.formatted(date: .abbreviated, time: .omitted) ?? "아직 없음"
+    }
+}
+
+private struct GarmentWearHistoryCard: View {
+    let outfit: Outfit
+    let focusedGarment: Garment
+
+    private var companionGarments: [Garment] {
+        outfit.items.compactMap(\.garment).filter { $0.id != focusedGarment.id }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack {
+                LinearGradient(
+                    colors: [Color(hex: focusedGarment.colorHex).opacity(0.72), WEARyTheme.canvas],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                if let data = outfit.photoData, let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    HStack(spacing: -4) {
+                        GarmentCutoutThumbnail(garment: focusedGarment).frame(width: 52, height: 74)
+                        ForEach(companionGarments.prefix(2)) { garment in
+                            GarmentCutoutThumbnail(garment: garment).frame(width: 42, height: 58)
+                        }
+                    }
+                }
+            }
+            .frame(width: 150, height: 120)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            Text(outfit.wornAt.formatted(.dateTime.month().day().weekday(.abbreviated)))
+                .font(.subheadline.weight(.bold))
+            HStack {
+                Text(outfit.wornAt.formatted(date: .omitted, time: .shortened))
+                if outfit.isPublished { Image(systemName: "person.2.fill") }
+            }
+            .font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
+        }
+        .padding(10)
+        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(outfit.wornAt.formatted(date: .long, time: .shortened)) 착장")
     }
 }

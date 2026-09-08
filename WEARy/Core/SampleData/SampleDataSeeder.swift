@@ -12,7 +12,15 @@ enum SampleDataSeeder {
 
     private static func loadOrCreateGarments(in context: ModelContext) -> [Garment] {
         if let existing = try? context.fetch(FetchDescriptor<Garment>()), !existing.isEmpty {
-            return existing
+            guard !existing.contains(where: { $0.name == "옐로 체크 셔츠" }) else { return existing }
+            let reviewSample = Garment(
+                name: "옐로 체크 셔츠", brand: "VINTAGE", category: .top,
+                colorName: "머스터드", colorHex: "D7B45A",
+                purchaseDate: Calendar.current.date(byAdding: .month, value: -10, to: .now),
+                purchasePrice: 68_000, size: "M", season: "봄 · 가을"
+            )
+            context.insert(reviewSample)
+            return existing + [reviewSample]
         }
 
         let calendar = Calendar.current
@@ -42,6 +50,10 @@ enum SampleDataSeeder {
                     colorName: "블랙", colorHex: "343434",
                     purchaseDate: calendar.date(byAdding: .year, value: -2, to: now),
                     purchasePrice: 189_000, size: "S", season: "가을 · 겨울", status: .selling),
+            Garment(name: "옐로 체크 셔츠", brand: "VINTAGE", category: .top,
+                    colorName: "머스터드", colorHex: "D7B45A",
+                    purchaseDate: calendar.date(byAdding: .month, value: -10, to: now),
+                    purchasePrice: 68_000, size: "M", season: "봄 · 가을"),
         ]
         garments.forEach(context.insert)
         return garments

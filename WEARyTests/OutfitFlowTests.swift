@@ -82,4 +82,41 @@ struct OutfitFlowTests {
 
         #expect(listing.status == .reserved)
     }
+
+    @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")
+    func reviewCandidatesRespectStatusAndThreshold() {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let oldDate = Calendar.current.date(byAdding: .day, value: -200, to: now)
+        let active = Garment(
+            name: "오래된 셔츠", category: .top, colorName: "블루", colorHex: "0000FF",
+            purchaseDate: oldDate
+        )
+        let kept = Garment(
+            name: "유지할 재킷", category: .outer, colorName: "블랙", colorHex: "000000",
+            purchaseDate: oldDate, status: .keep
+        )
+
+        let result = WardrobeInsights.reviewCandidates(
+            garments: [active, kept], thresholdDays: 180, now: now
+        )
+
+        #expect(result.map(\.id) == [active.id])
+    }
+
+    @Test("확정된 착장만 기간별 착용 횟수에 반영한다")
+    func usageCountsConfirmedOutfitsOnly() {
+        let garment = Garment(
+            name: "데님", category: .bottom, colorName: "블루", colorHex: "7392B7"
+        )
+        let confirmed = Outfit(wornAt: .now, isConfirmed: true)
+        let draft = Outfit(wornAt: .now, isConfirmed: false)
+        let confirmedItem = OutfitItem(garment: garment, outfit: confirmed)
+        let draftItem = OutfitItem(garment: garment, outfit: draft)
+        garment.outfitItems = [confirmedItem, draftItem]
+
+        let usage = WardrobeInsights.usage(garments: [garment], period: .thirtyDays)
+
+        #expect(usage.first?.count == 1)
+        #expect(garment.wearCount == 1)
+    }
 }
