@@ -10,6 +10,7 @@ enum SampleDataSeeder {
         createCommunityPostsIfNeeded(outfits: outfits, in: context)
         expandCommunityPostsIfNeeded(outfits: outfits, in: context)
         createMarketListingsIfNeeded(garments: garments, in: context)
+        applyMarketDemoDetailsIfNeeded(in: context)
         try? context.save()
     }
 
@@ -223,5 +224,20 @@ enum SampleDataSeeder {
             ),
         ]
         listings.forEach(context.insert)
+    }
+
+    private static func applyMarketDemoDetailsIfNeeded(in context: ModelContext) {
+        let listings = (try? context.fetch(FetchDescriptor<MarketListing>())) ?? []
+        let defaults: [String: (place: String, chats: Int)] = [
+            "블랙 니트 드레스": ("성수역 3번 출구", 3),
+            "빈티지 레더 재킷": ("한남동 주민센터 앞", 5),
+            "레드 미니 백": ("연남동 경의선숲길 입구", 2),
+            "실버 러너 스니커즈": ("성수역 개찰구", 4),
+        ]
+        for listing in listings {
+            guard let values = defaults[listing.title] else { continue }
+            if listing.meetingPlace == nil { listing.meetingPlace = values.place }
+            if listing.chatCount == nil { listing.chatCount = values.chats }
+        }
     }
 }

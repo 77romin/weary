@@ -46,6 +46,28 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["옷장에서 다음 옷장으로"].waitForExistence(timeout: 3))
     }
 
+    func testOwnedMarketListingProvidesSellerManagement() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["마켓"].tap()
+
+        app.staticTexts["블랙 니트 드레스"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["market.ownerMenu"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["market.adjustPrice"].exists)
+        XCTAssertTrue(app.buttons["market.markSold"].exists)
+        XCTAssertTrue(app.staticTexts["성수역 3번 출구"].exists)
+
+        app.buttons["market.adjustPrice"].tap()
+        XCTAssertTrue(app.navigationBars["가격 조정"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["market.savePrice"].exists)
+        app.buttons["취소"].tap()
+
+        app.buttons["market.ownerMenu"].tap()
+        app.buttons["매물 수정"].tap()
+        XCTAssertTrue(app.navigationBars["매물 수정"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["market.saveEdit"].exists)
+    }
+
     func testFeedComposerFilterAndFollowingConnectToMy() throws {
         continueAfterFailure = false
         let app = launchApp()

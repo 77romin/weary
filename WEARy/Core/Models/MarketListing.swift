@@ -31,6 +31,8 @@ final class MarketListing {
     var createdAt: Date
     var isLiked: Bool
     var accentHex: String
+    var meetingPlace: String?
+    var chatCount: Int?
     var garment: Garment?
 
     init(
@@ -46,6 +48,8 @@ final class MarketListing {
         createdAt: Date = .now,
         isLiked: Bool = false,
         accentHex: String = "B7A08B",
+        meetingPlace: String? = nil,
+        chatCount: Int? = nil,
         garment: Garment? = nil
     ) {
         self.id = id
@@ -60,6 +64,8 @@ final class MarketListing {
         self.createdAt = createdAt
         self.isLiked = isLiked
         self.accentHex = accentHex
+        self.meetingPlace = meetingPlace
+        self.chatCount = chatCount
         self.garment = garment
     }
 
@@ -71,5 +77,18 @@ final class MarketListing {
     var status: ListingStatus {
         get { ListingStatus(rawValue: statusRaw) ?? .active }
         set { statusRaw = newValue.rawValue }
+    }
+
+    var isOwnedByCurrentUser: Bool {
+        sellerName == "나의 WEARy" || sellerName == "나의 옷장"
+    }
+
+    var displayedMeetingPlace: String {
+        let trimmed = meetingPlace?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "장소 협의" : trimmed
+    }
+
+    var displayedChatCount: Int {
+        max(0, chatCount ?? 0)
     }
 }

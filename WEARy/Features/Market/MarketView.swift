@@ -79,6 +79,9 @@ private struct MarketListingCard: View {
                 .font(.headline)
             Text("\(listing.size) · \(listing.condition.rawValue)")
                 .font(.caption2).foregroundStyle(WEARyTheme.secondaryInk).lineLimit(1)
+            Label("채팅 \(listing.displayedChatCount)명", systemImage: "bubble.left.and.bubble.right")
+                .font(.caption2)
+                .foregroundStyle(WEARyTheme.secondaryInk)
         }
         .padding(10)
         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 22))
@@ -104,10 +107,15 @@ private struct MarketArtwork: View {
 }
 
 private struct MarketListingDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Bindable var listing: MarketListing
     @State private var showingChat = false
     @State private var showingRequestConfirmation = false
+    @State private var showingEditor = false
+    @State private var showingPriceEditor = false
+    @State private var showingDeleteConfirmation = false
+    @State private var showingSoldConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -132,6 +140,11 @@ private struct MarketListingDetailView: View {
                         if let count = listing.garment?.wearCount { detailPill("착용", "\(count)회") }
                     }
                     Text(listing.detailText).font(.body).foregroundStyle(WEARyTheme.secondaryInk)
+                    Label(listing.displayedMeetingPlace, systemImage: "mappin.and.ellipse")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                     if let garment = listing.garment {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("옷장 데이터 인증").font(.headline)
@@ -140,21 +153,10 @@ private struct MarketListingDetailView: View {
                         }
                         .padding(16).background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                     }
-                    HStack(spacing: 10) {
-                        Button { showingChat = true } label: {
-                            Label("채팅", systemImage: "bubble.left.and.bubble.right")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        Button {
-                            listing.status = .reserved
-                            try? modelContext.save()
-                            showingRequestConfirmation = true
-                        } label: {
-                            Text("구매 요청").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent).tint(WEARyTheme.ink)
-                        .disabled(listing.status != .active)
+                    if listing.isOwnedByCurrentUser {
+                        ownerActions
+                    } else {
+                        buyerActions
                     }
                 }
                 .padding(.horizontal, 18).padding(.bottom, 30)
@@ -162,10 +164,110 @@ private struct MarketListingDetailView: View {
         }
         .background(WEARyTheme.canvas)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingChat) { MockChatView(sellerName: listing.sellerName) }
+        .toolbar {
+            if listing.isOwnedByCurrentUser {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingEditor = true
+                        } label: {
+                            Label("매물 수정", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Label("게시물 삭제", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityIdentifier("market.ownerMenu")
+                }
+            }
+        }
+        .sheet(isPresented: $showingChat) {
+            if listing.isOwnedByCurrentUser {
+                SellerChatListView(listing: listing)
+            } else {
+                MockChatView(sellerName: listing.sellerName)
+            }
+        }
+        .sheet(isPresented: $showingEditor) { EditListingView(listing: listing) }
+        .sheet(isPresented: $showingPriceEditor) { ListingPriceEditor(listing: listing) }
         .alert("구매를 요청했어요", isPresented: $showingRequestConfirmation) {
             Button("확인", role: .cancel) { }
         } message: { Text("판매자가 확인하면 채팅으로 알려드릴게요.") }
+        .confirmationDialog("이 매물을 판매 완료로 바꿀까요?", isPresented: $showingSoldConfirmation) {
+            Button("판매 완료") { markAsSold() }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("연결된 옷도 판매 완료 상태로 변경됩니다.")
+        }
+        .confirmationDialog("이 매물을 삭제할까요?", isPresented: $showingDeleteConfirmation) {
+            Button("삭제", role: .destructive) { deleteListing() }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("마켓 게시물만 삭제되고 옷은 내 옷장에 남습니다.")
+        }
+    }
+
+    private var ownerActions: some View {
+        VStack(spacing: 10) {
+            Button {
+                showingChat = true
+            } label: {
+                Label("채팅 중인 사람 \(listing.displayedChatCount)명", systemImage: "bubble.left.and.bubble.right.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            HStack(spacing: 10) {
+                Button("가격 조정") { showingPriceEditor = true }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("market.adjustPrice")
+                Button("판매 완료") { showingSoldConfirmation = true }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .tint(WEARyTheme.ink)
+                    .disabled(listing.status == .sold)
+                    .accessibilityIdentifier("market.markSold")
+            }
+        }
+    }
+
+    private var buyerActions: some View {
+        HStack(spacing: 10) {
+            Button { showingChat = true } label: {
+                Label("채팅 \(listing.displayedChatCount)", systemImage: "bubble.left.and.bubble.right")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            Button {
+                listing.status = .reserved
+                try? modelContext.save()
+                showingRequestConfirmation = true
+            } label: {
+                Text("구매 요청").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).tint(WEARyTheme.ink)
+            .disabled(listing.status != .active)
+        }
+    }
+
+    private func markAsSold() {
+        listing.status = .sold
+        listing.garment?.status = .sold
+        try? modelContext.save()
+    }
+
+    private func deleteListing() {
+        if listing.garment?.status == .selling {
+            listing.garment?.status = .active
+        }
+        modelContext.delete(listing)
+        try? modelContext.save()
+        dismiss()
     }
 
     private func detailPill(_ title: String, _ value: String) -> some View {
@@ -184,6 +286,7 @@ struct CreateListingView: View {
     @State private var title: String
     @State private var detailText: String
     @State private var price: String
+    @State private var meetingPlace = ""
     @State private var condition: ListingCondition = .excellent
 
     init(garment: Garment) {
@@ -204,13 +307,19 @@ struct CreateListingView: View {
                     }
                 }
             }
-            Section("판매 정보") {
+            Section {
                 TextField("상품명", text: $title)
                 TextField("판매 가격", text: $price).keyboardType(.numberPad)
                 Picker("상품 상태", selection: $condition) {
                     ForEach(ListingCondition.allCases) { Text($0.rawValue).tag($0) }
                 }
-                TextField("상품 설명", text: $detailText, axis: .vertical).lineLimit(4...8)
+                TextField("상품 설명을 직접 작성해 주세요", text: $detailText, axis: .vertical)
+                    .lineLimit(4...8)
+                TextField("만날 장소 (예: 성수역 3번 출구)", text: $meetingPlace)
+            } header: {
+                Text("판매 정보")
+            } footer: {
+                Text("설명과 만날 장소는 등록 후에도 수정할 수 있어요.")
             }
             Section {
                 Label("착용 \(garment.wearCount)회 · 구매 정보와 옷장 사진으로 작성했어요", systemImage: "sparkles")
@@ -230,14 +339,200 @@ struct CreateListingView: View {
 
     private func save() {
         modelContext.insert(MarketListing(
-            sellerName: "나의 옷장", title: title, detailText: detailText,
+            sellerName: "나의 WEARy", title: title, detailText: detailText,
             price: Int(price) ?? 0, originalPrice: garment.purchasePrice,
-            size: garment.size, condition: condition, accentHex: garment.colorHex, garment: garment
+            size: garment.size, condition: condition, accentHex: garment.colorHex,
+            meetingPlace: meetingPlace, chatCount: 0, garment: garment
         ))
         garment.status = .selling
         try? modelContext.save()
         dismiss()
     }
+}
+
+private struct EditListingView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let listing: MarketListing
+    @State private var title: String
+    @State private var detailText: String
+    @State private var price: String
+    @State private var meetingPlace: String
+    @State private var condition: ListingCondition
+
+    init(listing: MarketListing) {
+        self.listing = listing
+        _title = State(initialValue: listing.title)
+        _detailText = State(initialValue: listing.detailText)
+        _price = State(initialValue: String(listing.price))
+        _meetingPlace = State(initialValue: listing.meetingPlace ?? "")
+        _condition = State(initialValue: listing.condition)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("판매 정보") {
+                    TextField("상품명", text: $title)
+                    TextField("판매 가격", text: $price)
+                        .keyboardType(.numberPad)
+                    Picker("상품 상태", selection: $condition) {
+                        ForEach(ListingCondition.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    TextField("상품 설명", text: $detailText, axis: .vertical)
+                        .lineLimit(4...8)
+                    TextField("만날 장소", text: $meetingPlace)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(WEARyTheme.canvas)
+            .navigationTitle("매물 수정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장", action: save)
+                        .fontWeight(.bold)
+                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Int(price) == nil)
+                        .accessibilityIdentifier("market.saveEdit")
+                }
+            }
+        }
+    }
+
+    private func save() {
+        listing.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        listing.price = Int(price) ?? listing.price
+        listing.condition = condition
+        listing.detailText = detailText.trimmingCharacters(in: .whitespacesAndNewlines)
+        listing.meetingPlace = meetingPlace.trimmingCharacters(in: .whitespacesAndNewlines)
+        try? modelContext.save()
+        dismiss()
+    }
+}
+
+private struct ListingPriceEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let listing: MarketListing
+    @State private var price: String
+
+    init(listing: MarketListing) {
+        self.listing = listing
+        _price = State(initialValue: String(listing.price))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("새 판매 가격", text: $price)
+                        .keyboardType(.numberPad)
+                        .font(.title3.weight(.semibold))
+                } header: {
+                    Text("현재 가격 · \(listing.price.formatted())원")
+                } footer: {
+                    Text("가격을 저장하면 목록과 상세 화면에 바로 반영됩니다.")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(WEARyTheme.canvas)
+            .navigationTitle("가격 조정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        guard let value = Int(price), value >= 0 else { return }
+                        listing.price = value
+                        try? modelContext.save()
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                    .disabled(Int(price) == nil)
+                    .accessibilityIdentifier("market.savePrice")
+                }
+            }
+        }
+    }
+}
+
+private struct SellerChatListView: View {
+    @Environment(\.dismiss) private var dismiss
+    let listing: MarketListing
+    @State private var selectedBuyer: MockBuyer?
+
+    private let buyers = [
+        MockBuyer(name: "채원", handle: "chae.closet", message: "오늘 저녁에 거래 가능할까요?", initials: "CW"),
+        MockBuyer(name: "준호", handle: "joon.fit", message: "실측 사이즈가 궁금해요!", initials: "JH"),
+        MockBuyer(name: "수빈", handle: "subin.archive", message: "가격 조정 가능할까요?", initials: "SB"),
+        MockBuyer(name: "유진", handle: "yujin.daily", message: "아직 판매 중인가요?", initials: "YJ"),
+        MockBuyer(name: "태오", handle: "taeo.look", message: "주말에 직거래하고 싶어요.", initials: "TO"),
+    ]
+
+    private var visibleBuyers: [MockBuyer] {
+        Array(buyers.prefix(listing.displayedChatCount))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if visibleBuyers.isEmpty {
+                    ContentUnavailableView(
+                        "아직 채팅이 없어요",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text("구매 희망자의 메시지가 오면 이곳에 표시됩니다.")
+                    )
+                } else {
+                    List(visibleBuyers) { buyer in
+                        Button {
+                            selectedBuyer = buyer
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(buyer.initials)
+                                    .font(.caption.weight(.black))
+                                    .frame(width: 44, height: 44)
+                                    .background(WEARyTheme.lime, in: Circle())
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(buyer.name).fontWeight(.semibold)
+                                    Text(buyer.message)
+                                        .font(.caption)
+                                        .foregroundStyle(WEARyTheme.secondaryInk)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(WEARyTheme.canvas)
+                }
+            }
+            .navigationTitle("채팅 \(listing.displayedChatCount)명")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("완료") { dismiss() }
+                }
+            }
+            .sheet(item: $selectedBuyer) { buyer in
+                MockChatView(sellerName: buyer.name)
+            }
+        }
+    }
+}
+
+private struct MockBuyer: Identifiable {
+    let name: String
+    let handle: String
+    let message: String
+    let initials: String
+
+    var id: String { handle }
 }
 
 private struct SellGarmentPicker: View {

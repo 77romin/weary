@@ -95,6 +95,27 @@ struct OutfitFlowTests {
         #expect(listing.status == .reserved)
     }
 
+    @Test("내 매물은 장소와 채팅 인원 및 판매 상태를 관리한다")
+    func ownedMarketListingManagementValues() {
+        let listing = MarketListing(
+            sellerName: "나의 WEARy",
+            title: "재킷",
+            detailText: "직접 작성한 설명",
+            price: 50_000,
+            meetingPlace: "성수역 3번 출구",
+            chatCount: 3
+        )
+
+        listing.price = 45_000
+        listing.status = .sold
+
+        #expect(listing.isOwnedByCurrentUser)
+        #expect(listing.displayedMeetingPlace == "성수역 3번 출구")
+        #expect(listing.displayedChatCount == 3)
+        #expect(listing.price == 45_000)
+        #expect(listing.status == .sold)
+    }
+
     @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")
     func reviewCandidatesRespectStatusAndThreshold() {
         let now = Date(timeIntervalSince1970: 2_000_000_000)
