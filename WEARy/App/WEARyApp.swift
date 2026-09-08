@@ -29,14 +29,17 @@ struct WEARyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if shouldShowOnboarding {
-                OnboardingView {
-                    hasCompletedOnboarding = true
-                    didCompleteForcedOnboarding = true
+            Group {
+                if shouldShowOnboarding {
+                    OnboardingView {
+                        hasCompletedOnboarding = true
+                        didCompleteForcedOnboarding = true
+                    }
+                } else {
+                    RootTabView()
                 }
-            } else {
-                RootTabView()
             }
+            .preferredColorScheme(.light)
         }
         .modelContainer(modelContainer)
     }

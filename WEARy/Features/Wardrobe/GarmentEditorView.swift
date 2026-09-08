@@ -3,22 +3,15 @@ import SwiftData
 import SwiftUI
 
 struct GarmentEditorView: View {
-    private enum RegistrationMode: String, CaseIterable, Identifiable {
-        case quick = "빠른 등록"
-        case purchase = "새로 산 옷"
-
-        var id: String { rawValue }
-    }
-
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     private let garment: Garment?
-    @State private var mode: RegistrationMode
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var imageData: Data?
     @State private var cutoutImageData: Data?
     @State private var showingCamera = false
+    @State private var showingPhotoLibrary = false
     @State private var cameraMessage: String?
     @State private var isGeneratingCutout = false
     @State private var didAttemptCutout = false
@@ -32,14 +25,13 @@ struct GarmentEditorView: View {
     @State private var size: String
     @State private var season: String
     @State private var status: GarmentStatus
+    @State private var hasPurchaseDate: Bool
     @State private var keepAdding = false
     @State private var showingSavedConfirmation = false
     @State private var saveError: String?
 
     init(garment: Garment? = nil) {
         self.garment = garment
-        let isEditing = garment != nil
-        _mode = State(initialValue: isEditing ? .purchase : .quick)
         _imageData = State(initialValue: garment?.imageData)
         _cutoutImageData = State(initialValue: garment?.cutoutImageData)
         _didAttemptCutout = State(initialValue: garment?.imageData != nil)
@@ -53,6 +45,7 @@ struct GarmentEditorView: View {
         _size = State(initialValue: garment?.size ?? "")
         _season = State(initialValue: garment?.season ?? "사계절")
         _status = State(initialValue: garment?.status ?? .active)
+        _hasPurchaseDate = State(initialValue: garment?.purchaseDate != nil)
     }
 
     var body: some View {
@@ -60,17 +53,9 @@ struct GarmentEditorView: View {
             Form {
                 if garment == nil {
                     Section {
-                        Picker("등록 방식", selection: $mode) {
-                            ForEach(RegistrationMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
                         Toggle("저장 후 다음 옷 등록", isOn: $keepAdding)
                     } footer: {
-                        Text(mode == .quick
-                             ? "기존 옷장은 사진과 기본 정보만 빠르게 등록할 수 있어요."
-                             : "구매 정보까지 기록하면 1회 착용 비용을 확인할 수 있어요.")
+                        Text("구매 정보가 없어도 옷을 등록할 수 있어요.")
                     }
                 }
 
@@ -105,12 +90,17 @@ struct GarmentEditorView: View {
                             Label("카메라로 촬영", systemImage: "camera.fill")
                         }
                         .accessibilityIdentifier("garment.camera")
+                        .buttonStyle(.borderless)
 
                         Spacer()
 
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Button {
+                            showingPhotoLibrary = true
+                        } label: {
                             Label("사진 보관함", systemImage: "photo.on.rectangle")
                         }
+                        .accessibilityIdentifier("garment.library")
+                        .buttonStyle(.borderless)
                     }
 
                     if imageData != nil {
@@ -143,21 +133,26 @@ struct GarmentEditorView: View {
                     }
                 }
 
-                if mode == .purchase || garment != nil {
-                    Section("구매 정보") {
+                Section {
+                    Toggle("구매일 입력", isOn: $hasPurchaseDate)
+                    if hasPurchaseDate {
                         DatePicker("구매일", selection: $purchaseDate, displayedComponents: .date)
-                        TextField("구매 가격", text: $purchasePrice)
-                            .keyboardType(.numberPad)
-                        TextField("사이즈", text: $size)
-                            .textInputAutocapitalization(.characters)
                     }
+                    TextField("구매 가격 (선택)", text: $purchasePrice)
+                        .keyboardType(.numberPad)
+                    TextField("사이즈 (선택)", text: $size)
+                        .textInputAutocapitalization(.characters)
+                } header: {
+                    Text("구매 정보 · 선택")
+                } footer: {
+                    Text("가격을 입력하면 착용 횟수에 따라 1회당 착용 비용을 계산해 드려요.")
+                }
 
-                    if garment != nil {
-                        Section("관리") {
-                            Picker("상태", selection: $status) {
-                                ForEach(GarmentStatus.allCases) { status in
-                                    Text(status.rawValue).tag(status)
-                                }
+                if garment != nil {
+                    Section("관리") {
+                        Picker("상태", selection: $status) {
+                            ForEach(GarmentStatus.allCases) { status in
+                                Text(status.rawValue).tag(status)
                             }
                         }
                     }
@@ -205,6 +200,11 @@ struct GarmentEditorView: View {
                 }
                 .ignoresSafeArea()
             }
+            .photosPicker(
+                isPresented: $showingPhotoLibrary,
+                selection: $selectedPhoto,
+                matching: .images
+            )
             .alert("카메라를 열 수 없어요", isPresented: Binding(
                 get: { cameraMessage != nil },
                 set: { if !$0 { cameraMessage = nil } }
@@ -230,7 +230,7 @@ struct GarmentEditorView: View {
             garment.brand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
             garment.category = category
             garment.colorName = colorName
-            garment.purchaseDate = purchaseDate
+            garment.purchaseDate = hasPurchaseDate ? purchaseDate : nil
             garment.purchasePrice = parsedPrice
             garment.size = size
             garment.season = season
@@ -244,9 +244,9 @@ struct GarmentEditorView: View {
                 category: category,
                 colorName: colorName,
                 colorHex: colorHex,
-                purchaseDate: mode == .purchase ? purchaseDate : nil,
-                purchasePrice: mode == .purchase ? parsedPrice : nil,
-                size: mode == .purchase ? size : "",
+                purchaseDate: hasPurchaseDate ? purchaseDate : nil,
+                purchasePrice: parsedPrice,
+                size: size,
                 season: season,
                 imageData: imageData,
                 cutoutImageData: cutoutImageData
@@ -297,6 +297,7 @@ struct GarmentEditorView: View {
         imageData = nil
         cutoutImageData = nil
         showingCamera = false
+        showingPhotoLibrary = false
         cameraMessage = nil
         isGeneratingCutout = false
         didAttemptCutout = false
@@ -308,6 +309,7 @@ struct GarmentEditorView: View {
         purchaseDate = .now
         purchasePrice = ""
         size = ""
+        hasPurchaseDate = false
         season = "사계절"
         status = .active
         saveError = nil

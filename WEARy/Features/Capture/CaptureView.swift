@@ -3,9 +3,13 @@ import SwiftData
 import SwiftUI
 
 struct CaptureView: View {
-    private enum Phase: Equatable {
+    private enum Phase: Hashable {
         case ready, preview, analyzing, review, saved
         case failed(String)
+    }
+
+    private enum CameraReadiness: Equatable {
+        case checking, ready, unavailable, denied
     }
 
     @Environment(\.modelContext) private var modelContext
@@ -13,7 +17,7 @@ struct CaptureView: View {
     @State private var phase: Phase = .ready
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
-    @State private var showingCamera = false
+    @State private var cameraReadiness: CameraReadiness = .checking
     @State private var cameraMessage: String?
     @State private var wornAt = Date.now
     @State private var groups: [DetectedGarmentGroup] = []
@@ -41,10 +45,13 @@ struct CaptureView: View {
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(phase == .ready && cameraReadiness == .ready ? .hidden : .visible, for: .navigationBar)
             .toolbar {
                 if phase != .ready && phase != .saved {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("처음부터") { reset() }.foregroundStyle(.white)
+                        Button("처음부터") { reset() }
+                            .foregroundStyle(.white)
+                            .lightTextOutline()
                     }
                 }
             }
@@ -67,14 +74,6 @@ struct CaptureView: View {
                 OutfitGarmentPicker(garments: garments) { applyManualSelection($0) }
             }
             .sheet(isPresented: $showingNewGarment) { GarmentEditorView() }
-            .fullScreenCover(isPresented: $showingCamera) {
-                CameraPicker { data in
-                    selectedPhoto = nil
-                    photoData = data
-                    phase = .preview
-                }
-                .ignoresSafeArea()
-            }
             .alert("카메라를 열 수 없어요", isPresented: Binding(
                 get: { cameraMessage != nil },
                 set: { if !$0 { cameraMessage = nil } }
@@ -95,6 +94,29 @@ struct CaptureView: View {
     }
 
     private var readyView: some View {
+        Group {
+            switch cameraReadiness {
+            case .checking:
+                ProgressView("카메라 준비 중")
+                    .tint(WEARyTheme.lime)
+                    .foregroundStyle(.white)
+                    .lightTextOutline()
+            case .ready:
+                OutfitCameraView(
+                    onCapture: acceptPhoto,
+                    onFailure: { cameraMessage = $0 }
+                )
+                .ignoresSafeArea(edges: .top)
+            case .unavailable, .denied:
+                cameraFallbackView
+            }
+        }
+        .task {
+            await prepareCameraIfNeeded()
+        }
+    }
+
+    private var cameraFallbackView: some View {
         ScrollView {
             VStack(spacing: 26) {
                 ZStack {
@@ -108,10 +130,12 @@ struct CaptureView: View {
                 VStack(spacing: 8) {
                     Text("오늘의 룩을 남겨보세요")
                         .font(.system(.title2, design: .rounded, weight: .bold))
+                        .lightTextOutline()
                     Text("전신이 프레임 안에 들어오면\n내 옷장에서 입은 옷을 찾아드려요.")
                         .font(.subheadline)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.65))
+                        .lightTextOutline()
                 }
                 VStack(spacing: 12) {
                     Button {
@@ -128,6 +152,7 @@ struct CaptureView: View {
                         Label("사진 보관함에서 선택", systemImage: "photo.on.rectangle")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
+                            .lightTextOutline()
                             .padding(.vertical, 10)
                     }
                     Button {
@@ -137,6 +162,7 @@ struct CaptureView: View {
                         Text("샘플 사진으로 체험")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
+                            .lightTextOutline()
                             .padding(.vertical, 10)
                     }
                     .accessibilityIdentifier("capture.sample")
@@ -178,9 +204,12 @@ struct CaptureView: View {
                 ProgressView().controlSize(.large).tint(WEARyTheme.lime)
             }
             VStack(spacing: 8) {
-                Text("옷장에서 찾고 있어요").font(.title2.bold())
+                Text("옷장에서 찾고 있어요")
+                    .font(.title2.bold())
+                    .lightTextOutline()
                 Text("색상과 형태가 비슷한 옷을 비교하는 중")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.6))
+                    .lightTextOutline()
             }
         }
         .foregroundStyle(.white)
@@ -194,9 +223,12 @@ struct CaptureView: View {
                         .frame(width: 92, height: 132)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("AI가 \(groups.count)개 아이템을 찾았어요").font(.headline)
+                        Text("AI가 \(groups.count)개 아이템을 찾았어요")
+                            .font(.headline)
+                            .lightTextOutline()
                         Text("틀린 옷만 바꾸고 기록을 확정하세요.")
                             .font(.subheadline).foregroundStyle(.white.opacity(0.58))
+                            .lightTextOutline()
                     }
                 }
                 ForEach(groups) { group in
@@ -216,10 +248,16 @@ struct CaptureView: View {
                     Button {
                         editingGroupID = nil
                         showingGarmentPicker = true
-                    } label: { Label("옷 직접 추가", systemImage: "plus") }
+                    } label: {
+                        Label("옷 직접 추가", systemImage: "plus")
+                            .lightTextOutline()
+                    }
                     Button {
                         showingNewGarment = true
-                    } label: { Label("새 옷 등록", systemImage: "hanger") }
+                    } label: {
+                        Label("새 옷 등록", systemImage: "hanger")
+                            .lightTextOutline()
+                    }
                 }
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.bordered)
@@ -229,13 +267,16 @@ struct CaptureView: View {
                     Toggle("커뮤니티에 공개", isOn: $publishToFeed)
                         .font(.subheadline.weight(.bold))
                         .tint(WEARyTheme.lime)
+                        .lightTextOutline()
                     if publishToFeed {
                         TextField("오늘의 룩을 소개해 주세요", text: $postCaption, axis: .vertical)
+                            .lightTextOutline()
                             .padding(12)
                             .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
                     }
                     Text("개인 착장 기록은 기본적으로 나만 볼 수 있어요.")
                         .font(.caption).foregroundStyle(.white.opacity(0.55))
+                        .lightTextOutline()
                 }
                 .padding(16)
                 .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
@@ -261,9 +302,12 @@ struct CaptureView: View {
                 .frame(width: 82, height: 82)
                 .background(WEARyTheme.lime, in: Circle())
             VStack(spacing: 7) {
-                Text("오늘의 룩을 기록했어요").font(.title2.bold())
+                Text("오늘의 룩을 기록했어요")
+                    .font(.title2.bold())
+                    .lightTextOutline()
                 Text("선택한 옷의 착용 데이터가 갱신됐어요.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.62))
+                    .lightTextOutline()
             }
             Button("다른 착장 기록하기", action: reset)
                 .buttonStyle(.borderedProminent)
@@ -277,8 +321,11 @@ struct CaptureView: View {
         ContentUnavailableView {
             Label("분석하지 못했어요", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.white)
+                .lightTextOutline()
         } description: {
-            Text(message).foregroundStyle(.white.opacity(0.65))
+            Text(message)
+                .foregroundStyle(.white.opacity(0.65))
+                .lightTextOutline()
         } actions: {
             Button("다시 시도") { phase = .preview }
                 .buttonStyle(.borderedProminent)
@@ -370,19 +417,38 @@ struct CaptureView: View {
         Task {
             switch await CameraAccess.request() {
             case .ready:
-                showingCamera = true
+                cameraReadiness = .ready
             case .unavailable:
+                cameraReadiness = .unavailable
                 cameraMessage = "이 기기에서는 카메라를 사용할 수 없어요. 사진 보관함이나 샘플 사진을 이용해 주세요."
             case .denied:
+                cameraReadiness = .denied
                 cameraMessage = "설정에서 WEARy의 카메라 접근을 허용한 뒤 다시 시도해 주세요."
             }
         }
     }
 
+    private func prepareCameraIfNeeded() async {
+        guard cameraReadiness == .checking else { return }
+        switch await CameraAccess.request() {
+        case .ready:
+            cameraReadiness = .ready
+        case .unavailable:
+            cameraReadiness = .unavailable
+        case .denied:
+            cameraReadiness = .denied
+        }
+    }
+
+    private func acceptPhoto(_ data: Data) {
+        selectedPhoto = nil
+        photoData = data
+        phase = .preview
+    }
+
     private func reset() {
         selectedPhoto = nil
         photoData = nil
-        showingCamera = false
         cameraMessage = nil
         wornAt = .now
         groups = []
@@ -429,7 +495,9 @@ private struct MatchGroupCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label(group.category.rawValue, systemImage: group.category.symbol).font(.headline)
+                Label(group.category.rawValue, systemImage: group.category.symbol)
+                    .font(.headline)
+                    .lightTextOutline()
                 Spacer()
                 Text(group.confidence == .high ? "AI 추천" : "비슷한 옷")
                     .font(.caption.weight(.bold))
@@ -444,7 +512,10 @@ private struct MatchGroupCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(selectedGarment.brand.uppercased())
                             .font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.55))
-                        Text(selectedGarment.name).font(.subheadline.weight(.semibold))
+                            .lightTextOutline()
+                        Text(selectedGarment.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lightTextOutline()
                     }
                     Spacer()
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(WEARyTheme.lime)
@@ -452,6 +523,7 @@ private struct MatchGroupCard: View {
             } else {
                 Text("이 카테고리는 기록에서 제외했어요.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.58))
+                    .lightTextOutline()
             }
             if candidates.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -462,6 +534,7 @@ private struct MatchGroupCard: View {
                                 .padding(.horizontal, 12).padding(.vertical, 8)
                                 .background(selectedGarment?.id == garment.id ? WEARyTheme.lime : Color.white.opacity(0.12), in: Capsule())
                                 .foregroundStyle(selectedGarment?.id == garment.id ? WEARyTheme.ink : .white)
+                                .lightTextOutline(isActive: selectedGarment?.id != garment.id)
                         }
                     }
                 }
@@ -472,6 +545,7 @@ private struct MatchGroupCard: View {
                 Button("제외", action: onExclude)
             }
             .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
+            .lightTextOutline()
         }
         .padding(16)
         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))

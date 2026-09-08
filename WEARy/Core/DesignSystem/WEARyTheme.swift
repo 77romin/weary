@@ -40,3 +40,30 @@ extension Color {
         )
     }
 }
+
+private struct LightTextOutlineModifier: ViewModifier {
+    let isActive: Bool
+
+    private var outlineColor: Color {
+        isActive ? .black.opacity(0.92) : .clear
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: outlineColor, radius: 0, x: -0.7, y: 0)
+            .shadow(color: outlineColor, radius: 0, x: 0.7, y: 0)
+            .shadow(color: outlineColor, radius: 0, x: 0, y: -0.7)
+            .shadow(color: outlineColor, radius: 0, x: 0, y: 0.7)
+            .shadow(color: outlineColor, radius: 0, x: -0.5, y: -0.5)
+            .shadow(color: outlineColor, radius: 0, x: 0.5, y: -0.5)
+            .shadow(color: outlineColor, radius: 0, x: -0.5, y: 0.5)
+            .shadow(color: outlineColor, radius: 0, x: 0.5, y: 0.5)
+    }
+}
+
+extension View {
+    /// Keeps light labels readable over photos and warm background colors.
+    nonisolated func lightTextOutline(isActive: Bool = true) -> some View {
+        modifier(LightTextOutlineModifier(isActive: isActive))
+    }
+}

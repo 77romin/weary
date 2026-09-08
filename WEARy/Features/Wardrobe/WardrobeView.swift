@@ -109,6 +109,7 @@ struct WardrobeView: View {
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(isSelected ? WEARyTheme.surface : WEARyTheme.ink)
+        .lightTextOutline(isActive: isSelected)
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
         .background(isSelected ? WEARyTheme.ink : WEARyTheme.surface, in: Capsule())

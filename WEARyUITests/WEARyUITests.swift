@@ -63,6 +63,25 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["capture.sample"].exists)
     }
 
+    func testGarmentRegistrationUsesOneOptionalPurchaseFlow() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+
+        app.buttons["새 옷 등록"].tap()
+        XCTAssertTrue(app.navigationBars["새 옷 등록"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["빠른 등록"].exists)
+        XCTAssertFalse(app.staticTexts["새로 산 옷"].exists)
+
+        app.buttons["garment.camera"].tap()
+        XCTAssertTrue(app.alerts["카메라를 열 수 없어요"].waitForExistence(timeout: 3))
+        app.alerts.buttons["확인"].tap()
+
+        app.swipeUp()
+        XCTAssertTrue(app.switches["구매일 입력"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["구매 가격 (선택)"].exists)
+        XCTAssertTrue(app.textFields["사이즈 (선택)"].exists)
+    }
+
     func testOnboardingExplainsCoreLoopAndEntersWardrobe() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

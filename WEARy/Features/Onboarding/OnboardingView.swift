@@ -50,6 +50,7 @@ struct OnboardingView: View {
                         }
                         .font(.headline)
                         .foregroundStyle(WEARyTheme.surface)
+                        .lightTextOutline()
                         .padding(.horizontal, 22)
                         .frame(height: 58)
                         .background(WEARyTheme.ink, in: Capsule())

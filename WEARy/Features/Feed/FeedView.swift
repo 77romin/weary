@@ -51,6 +51,7 @@ struct FeedView: View {
                         .padding(.vertical, 9)
                         .background(topic == "오늘의 룩" ? WEARyTheme.ink : WEARyTheme.surface, in: Capsule())
                         .foregroundStyle(topic == "오늘의 룩" ? WEARyTheme.surface : WEARyTheme.ink)
+                        .lightTextOutline(isActive: topic == "오늘의 룩")
                 }
             }
         }

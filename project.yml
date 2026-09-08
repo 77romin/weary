@@ -7,8 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: ""
-    CODE_SIGNING_ALLOWED: NO
+    DEVELOPMENT_TEAM: NSFKUQF8TG
+    CODE_SIGN_STYLE: Automatic
 targets:
   WEARy:
     type: application

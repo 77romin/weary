@@ -114,6 +114,7 @@ struct GarmentDetailView: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(garment.status == status ? WEARyTheme.surface : WEARyTheme.ink)
+                        .lightTextOutline(isActive: garment.status == status)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(
