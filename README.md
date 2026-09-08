@@ -103,6 +103,7 @@ CloudKit 세부 구성과 커뮤니티 서버 기술 선택은 다음 단계의 
 
 상세한 제품 정의와 설계 원칙은 [PRODUCT_CONCEPT.md](./PRODUCT_CONCEPT.md)에서 확인할 수 있습니다.
 발표 순서와 복구 방법은 [DEMO_GUIDE.md](./DEMO_GUIDE.md)에서 확인할 수 있습니다.
+개인 iCloud와 공용 서버의 데이터 경계 및 ERD는 [DATA_ARCHITECTURE.md](./DATA_ARCHITECTURE.md)에서 확인할 수 있습니다.
 
 ## 구현 원칙
 
@@ -222,7 +223,12 @@ xcodebuild -project WEARy.xcodeproj \
 
 - [ ] 사용자 인터뷰로 핵심 흐름과 가치 검증
 - [ ] 실제 AI 의류 탐지 및 이미지 유사도 기술 검증
-- [ ] 서버, 인증, 클라우드 사진 저장 구조 설계
+- [x] 개인 iCloud와 공용 서버 데이터 경계 정의
+- [x] 개인 옷장 및 커뮤니티·마켓 논리 ERD 작성
+- [x] 공개 전환과 동기화 충돌 정책 초안 작성
+- [ ] CloudKit 개발 컨테이너와 entitlement 구성
+- [ ] SwiftData 모델의 CloudKit 호환성 검증 및 마이그레이션
+- [ ] 커뮤니티 서버 기술 스택과 첫 배포 범위 결정
 - [ ] 커뮤니티 신고, 차단, 콘텐츠 운영 정책 설계
 - [ ] 중고거래 결제, 배송, 정산 및 분쟁 정책 설계
 - [ ] 개인정보, 얼굴 이미지 및 데이터 삭제 정책 검토
