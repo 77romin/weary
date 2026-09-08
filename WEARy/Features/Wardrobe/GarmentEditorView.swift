@@ -18,6 +18,8 @@ struct GarmentEditorView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var imageData: Data?
     @State private var cutoutImageData: Data?
+    @State private var showingCamera = false
+    @State private var cameraMessage: String?
     @State private var isGeneratingCutout = false
     @State private var didAttemptCutout = false
     @State private var name: String
@@ -96,7 +98,20 @@ struct GarmentEditorView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    PhotosPicker("사진 보관함 열기", selection: $selectedPhoto, matching: .images)
+                    HStack {
+                        Button {
+                            requestCamera()
+                        } label: {
+                            Label("카메라로 촬영", systemImage: "camera.fill")
+                        }
+                        .accessibilityIdentifier("garment.camera")
+
+                        Spacer()
+
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label("사진 보관함", systemImage: "photo.on.rectangle")
+                        }
+                    }
 
                     if imageData != nil {
                         Button("사진 제거", role: .destructive) {
@@ -177,17 +192,26 @@ struct GarmentEditorView: View {
                             saveError = "선택한 사진을 불러올 수 없어요."
                             return
                         }
-                        imageData = data
-                        cutoutImageData = nil
-                        didAttemptCutout = false
-                        isGeneratingCutout = true
-                        cutoutImageData = await GarmentCutoutService.shared.makeCutout(from: data)
-                        isGeneratingCutout = false
-                        didAttemptCutout = true
+                        await processPhoto(data)
                     } catch {
                         saveError = "사진을 불러오는 중 문제가 생겼어요."
                     }
                 }
+            }
+            .fullScreenCover(isPresented: $showingCamera) {
+                CameraPicker { data in
+                    selectedPhoto = nil
+                    Task { await processPhoto(data) }
+                }
+                .ignoresSafeArea()
+            }
+            .alert("카메라를 열 수 없어요", isPresented: Binding(
+                get: { cameraMessage != nil },
+                set: { if !$0 { cameraMessage = nil } }
+            )) {
+                Button("확인") { cameraMessage = nil }
+            } message: {
+                Text(cameraMessage ?? "")
             }
             .alert("옷을 저장했어요", isPresented: $showingSavedConfirmation) {
                 Button("다음 옷 등록", role: .cancel) { }
@@ -243,10 +267,37 @@ struct GarmentEditorView: View {
         }
     }
 
+    @MainActor
+    private func processPhoto(_ data: Data) async {
+        imageData = data
+        cutoutImageData = nil
+        didAttemptCutout = false
+        saveError = nil
+        isGeneratingCutout = true
+        cutoutImageData = await GarmentCutoutService.shared.makeCutout(from: data)
+        isGeneratingCutout = false
+        didAttemptCutout = true
+    }
+
+    private func requestCamera() {
+        Task {
+            switch await CameraAccess.request() {
+            case .ready:
+                showingCamera = true
+            case .unavailable:
+                cameraMessage = "이 기기에서는 카메라를 사용할 수 없어요. 사진 보관함에서 이미지를 선택해 주세요."
+            case .denied:
+                cameraMessage = "설정에서 WEARy의 카메라 접근을 허용한 뒤 다시 시도해 주세요."
+            }
+        }
+    }
+
     private func resetForNextGarment() {
         selectedPhoto = nil
         imageData = nil
         cutoutImageData = nil
+        showingCamera = false
+        cameraMessage = nil
         isGeneratingCutout = false
         didAttemptCutout = false
         name = ""
@@ -283,7 +334,7 @@ private struct GarmentPhotoPreview: View {
                 VStack(spacing: 10) {
                     Image(systemName: "camera.viewfinder")
                         .font(.system(size: 38, weight: .light))
-                    Text("사진 보관함에서 선택")
+                    Text("사진을 촬영하거나 선택")
                         .font(.subheadline.weight(.semibold))
                 }
                 .foregroundStyle(WEARyTheme.ink)

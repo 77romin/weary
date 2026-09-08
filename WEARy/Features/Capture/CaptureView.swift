@@ -13,6 +13,8 @@ struct CaptureView: View {
     @State private var phase: Phase = .ready
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var showingCamera = false
+    @State private var cameraMessage: String?
     @State private var wornAt = Date.now
     @State private var groups: [DetectedGarmentGroup] = []
     @State private var editingGroupID: UUID?
@@ -65,6 +67,22 @@ struct CaptureView: View {
                 OutfitGarmentPicker(garments: garments) { applyManualSelection($0) }
             }
             .sheet(isPresented: $showingNewGarment) { GarmentEditorView() }
+            .fullScreenCover(isPresented: $showingCamera) {
+                CameraPicker { data in
+                    selectedPhoto = nil
+                    photoData = data
+                    phase = .preview
+                }
+                .ignoresSafeArea()
+            }
+            .alert("카메라를 열 수 없어요", isPresented: Binding(
+                get: { cameraMessage != nil },
+                set: { if !$0 { cameraMessage = nil } }
+            )) {
+                Button("확인") { cameraMessage = nil }
+            } message: {
+                Text(cameraMessage ?? "")
+            }
         }
     }
 
@@ -96,12 +114,22 @@ struct CaptureView: View {
                         .foregroundStyle(.white.opacity(0.65))
                 }
                 VStack(spacing: 12) {
+                    Button {
+                        requestCamera()
+                    } label: {
+                        Label("카메라로 촬영", systemImage: "camera.fill")
+                            .primaryCaptureButtonStyle()
+                    }
+                    .accessibilityIdentifier("capture.camera")
                     PhotosPicker(
-                        "사진 보관함에서 선택",
                         selection: $selectedPhoto,
                         matching: .images
-                    )
-                    .primaryCaptureButtonStyle()
+                    ) {
+                        Label("사진 보관함에서 선택", systemImage: "photo.on.rectangle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 10)
+                    }
                     Button {
                         photoData = nil
                         phase = .preview
@@ -338,9 +366,24 @@ struct CaptureView: View {
         }
     }
 
+    private func requestCamera() {
+        Task {
+            switch await CameraAccess.request() {
+            case .ready:
+                showingCamera = true
+            case .unavailable:
+                cameraMessage = "이 기기에서는 카메라를 사용할 수 없어요. 사진 보관함이나 샘플 사진을 이용해 주세요."
+            case .denied:
+                cameraMessage = "설정에서 WEARy의 카메라 접근을 허용한 뒤 다시 시도해 주세요."
+            }
+        }
+    }
+
     private func reset() {
         selectedPhoto = nil
         photoData = nil
+        showingCamera = false
+        cameraMessage = nil
         wornAt = .now
         groups = []
         editingGroupID = nil

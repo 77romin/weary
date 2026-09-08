@@ -15,6 +15,7 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["옷장"].waitForExistence(timeout: 3))
 
         app.tabBars.buttons["기록"].tap()
+        XCTAssertTrue(app.buttons["capture.camera"].waitForExistence(timeout: 3))
         let sampleButton = app.buttons["capture.sample"]
         XCTAssertTrue(sampleButton.waitForExistence(timeout: 3))
         sampleButton.tap()
@@ -43,6 +44,23 @@ final class WEARyUITests: XCTestCase {
         app.tabBars.buttons["마켓"].tap()
         XCTAssertTrue(app.navigationBars["마켓"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["옷장에서 다음 옷장으로"].waitForExistence(timeout: 3))
+    }
+
+    func testUnavailableCameraShowsPhotoFallbackGuidance() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-no-camera"]
+        app.launch()
+        app.tabBars.buttons["기록"].tap()
+
+        let cameraButton = app.buttons["capture.camera"]
+        XCTAssertTrue(cameraButton.waitForExistence(timeout: 3))
+        cameraButton.tap()
+
+        XCTAssertTrue(app.alerts["카메라를 열 수 없어요"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["이 기기에서는 카메라를 사용할 수 없어요. 사진 보관함이나 샘플 사진을 이용해 주세요."].exists)
+        app.alerts.buttons["확인"].tap()
+        XCTAssertTrue(app.buttons["capture.sample"].exists)
     }
 
     func testAccessibilityTextSizeKeepsCoreNavigationUsable() throws {
