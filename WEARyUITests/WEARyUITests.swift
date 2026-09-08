@@ -46,6 +46,33 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["옷장에서 다음 옷장으로"].waitForExistence(timeout: 3))
     }
 
+    func testFeedComposerFilterAndFollowingConnectToMy() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["피드"].tap()
+
+        app.buttons["feed.compose"].tap()
+        XCTAssertTrue(app.navigationBars["피드 작성"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["feed.publish"].exists)
+        app.buttons["취소"].tap()
+
+        app.buttons["feed.topic.빈티지"].tap()
+        XCTAssertTrue(app.staticTexts["서연"].waitForExistence(timeout: 3))
+        app.buttons
+            .matching(identifier: "follow.seoyeon.daily")
+            .matching(NSPredicate(format: "label == %@", "팔로우"))
+            .element
+            .tap()
+
+        app.tabBars.buttons["MY"].tap()
+        app.buttons["profile.following"].tap()
+        XCTAssertTrue(app.navigationBars["팔로잉"].waitForExistence(timeout: 3))
+        XCTAssertGreaterThan(
+            app.descendants(matching: .any).matching(identifier: "social.user.seoyeon.daily").count,
+            0
+        )
+    }
+
     func testUnavailableCameraShowsPhotoFallbackGuidance() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

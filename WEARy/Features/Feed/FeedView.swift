@@ -3,6 +3,15 @@ import SwiftUI
 
 struct FeedView: View {
     @Query(sort: \CommunityPost.createdAt, order: .reverse) private var posts: [CommunityPost]
+    @State private var selectedTopic = "전체"
+    @State private var showingComposer = false
+
+    private let topics = ["전체", "오늘의 룩", "미니멀", "빈티지", "출근 룩", "컬러 포인트"]
+
+    private var filteredPosts: [CommunityPost] {
+        guard selectedTopic != "전체" else { return posts }
+        return posts.filter { postMatchesTopic($0, topic: selectedTopic) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -12,17 +21,26 @@ struct FeedView: View {
                     ContentUnavailableView(
                         "첫 스타일을 기다리고 있어요",
                         systemImage: "rectangle.stack.badge.plus",
-                        description: Text("착장을 기록하고 커뮤니티에 공유해 보세요.")
+                        description: Text("착장을 기록하거나 + 버튼에서 첫 게시물을 작성해 보세요.")
                     )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 18) {
                             styleTopics
-                            ForEach(posts) { post in
-                                NavigationLink(value: post) {
-                                    CommunityPostCard(post: post)
+                            if filteredPosts.isEmpty {
+                                ContentUnavailableView(
+                                    "아직 \(selectedTopic) 게시물이 없어요",
+                                    systemImage: "sparkles",
+                                    description: Text("내 착장으로 이 스타일의 첫 게시물을 작성해 보세요.")
+                                )
+                                .padding(.top, 50)
+                            } else {
+                                ForEach(filteredPosts) { post in
+                                    NavigationLink(value: post) {
+                                        CommunityPostCard(post: post)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding(18)
@@ -31,12 +49,22 @@ struct FeedView: View {
             }
             .navigationTitle("!WEARy")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showingComposer = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("피드 게시물 작성")
+                    .accessibilityIdentifier("feed.compose")
                     Image(systemName: "bell")
                 }
             }
             .navigationDestination(for: CommunityPost.self) { post in
                 CommunityPostDetailView(post: post)
+            }
+            .sheet(isPresented: $showingComposer) {
+                CreateCommunityPostView()
             }
         }
     }
@@ -44,22 +72,43 @@ struct FeedView: View {
     private var styleTopics: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(["오늘의 룩", "미니멀", "빈티지", "출근 룩", "컬러 포인트"], id: \.self) { topic in
-                    Text(topic)
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 9)
-                        .background(topic == "오늘의 룩" ? WEARyTheme.ink : WEARyTheme.surface, in: Capsule())
-                        .foregroundStyle(topic == "오늘의 룩" ? WEARyTheme.surface : WEARyTheme.ink)
-                        .lightTextOutline(isActive: topic == "오늘의 룩")
+                ForEach(topics, id: \.self) { topic in
+                    Button {
+                        withAnimation(.snappy) { selectedTopic = topic }
+                    } label: {
+                        Text(topic)
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 9)
+                            .background(selectedTopic == topic ? WEARyTheme.ink : WEARyTheme.surface, in: Capsule())
+                            .foregroundStyle(selectedTopic == topic ? WEARyTheme.surface : WEARyTheme.ink)
+                            .lightTextOutline(isActive: selectedTopic == topic)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("feed.topic.\(topic)")
                 }
             }
         }
+    }
+
+    private func postMatchesTopic(_ post: CommunityPost, topic: String) -> Bool {
+        let terms: [String]
+        switch topic {
+        case "오늘의 룩": terms = ["오늘의룩"]
+        case "미니멀": terms = ["미니멀"]
+        case "빈티지": terms = ["빈티지"]
+        case "출근 룩": terms = ["출근룩", "출근"]
+        case "컬러 포인트": terms = ["컬러포인트", "포인트", "색"]
+        default: return true
+        }
+        let searchable = (post.tags.joined() + post.caption).replacingOccurrences(of: " ", with: "")
+        return terms.contains { searchable.localizedCaseInsensitiveContains($0) }
     }
 }
 
 private struct CommunityPostCard: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var allPosts: [CommunityPost]
     @Bindable var post: CommunityPost
 
     var body: some View {
@@ -94,12 +143,16 @@ private struct CommunityPostCard: View {
             }
             Spacer()
             Button(post.isFollowing ? "팔로잉" : "팔로우") {
-                post.isFollowing.toggle()
+                let newValue = !post.isFollowing
+                for authorPost in allPosts where authorPost.authorHandle == post.authorHandle {
+                    authorPost.isFollowing = newValue
+                }
                 try? modelContext.save()
             }
             .font(.caption.weight(.bold))
             .buttonStyle(.bordered)
             .tint(WEARyTheme.ink)
+            .accessibilityIdentifier("follow.\(post.authorHandle)")
         }
     }
 
@@ -125,6 +178,126 @@ private struct CommunityPostCard: View {
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(WEARyTheme.ink)
         .buttonStyle(.plain)
+    }
+}
+
+private struct CreateCommunityPostView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Outfit.wornAt, order: .reverse) private var outfits: [Outfit]
+    @State private var selectedOutfitID: UUID?
+    @State private var caption = ""
+    @State private var tagsText = "오늘의룩"
+
+    private var availableOutfits: [Outfit] {
+        outfits.filter(\.isConfirmed)
+    }
+
+    private var selectedOutfit: Outfit? {
+        availableOutfits.first { $0.id == selectedOutfitID }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("공개할 착장") {
+                    if availableOutfits.isEmpty {
+                        ContentUnavailableView(
+                            "저장된 착장이 없어요",
+                            systemImage: "camera",
+                            description: Text("기록 탭에서 착장을 먼저 남겨주세요.")
+                        )
+                    } else {
+                        Picker("착장 선택", selection: $selectedOutfitID) {
+                            ForEach(availableOutfits) { outfit in
+                                Text(outfit.wornAt.formatted(date: .abbreviated, time: .omitted))
+                                    .tag(Optional(outfit.id))
+                            }
+                        }
+                        if let selectedOutfit {
+                            OutfitComposerPreview(outfit: selectedOutfit)
+                        }
+                    }
+                }
+
+                Section("게시물") {
+                    TextField("오늘의 룩을 소개해 주세요", text: $caption, axis: .vertical)
+                        .lineLimit(3...6)
+                    TextField("태그를 쉼표로 구분해 주세요", text: $tagsText)
+                        .textInputAutocapitalization(.never)
+                }
+
+                Section {
+                    Text("공개한 착장과 옷 정보는 로컬 Mock 피드에만 표시됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(WEARyTheme.secondaryInk)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(WEARyTheme.canvas)
+            .navigationTitle("피드 작성")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("게시", action: publish)
+                        .fontWeight(.bold)
+                        .disabled(selectedOutfit == nil || caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("feed.publish")
+                }
+            }
+            .onAppear {
+                if selectedOutfitID == nil { selectedOutfitID = availableOutfits.first?.id }
+            }
+        }
+    }
+
+    private func publish() {
+        guard let selectedOutfit else { return }
+        let tags = tagsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "") }
+            .filter { !$0.isEmpty }
+        selectedOutfit.isPublished = true
+        modelContext.insert(CommunityPost(
+            authorName: "나",
+            authorHandle: "my.weary",
+            authorInitials: "ME",
+            caption: caption.trimmingCharacters(in: .whitespacesAndNewlines),
+            tags: tags.isEmpty ? ["오늘의룩"] : tags,
+            accentHex: "C7F25B",
+            outfit: selectedOutfit
+        ))
+        try? modelContext.save()
+        dismiss()
+    }
+}
+
+private struct OutfitComposerPreview: View {
+    let outfit: Outfit
+
+    var body: some View {
+        Group {
+            if let data = outfit.photoData, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                HStack(spacing: 4) {
+                    ForEach(outfit.items.compactMap(\.garment).prefix(4)) { garment in
+                        GarmentCutoutThumbnail(garment: garment)
+                    }
+                }
+                .padding(10)
+                .background(WEARyTheme.canvas)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 190)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .clipped()
     }
 }
 

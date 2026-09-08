@@ -8,6 +8,7 @@ enum SampleDataSeeder {
         applyDemoImagesIfNeeded(to: garments)
         let outfits = loadOrCreateOutfits(with: garments, in: context)
         createCommunityPostsIfNeeded(outfits: outfits, in: context)
+        expandCommunityPostsIfNeeded(outfits: outfits, in: context)
         createMarketListingsIfNeeded(garments: garments, in: context)
         try? context.save()
     }
@@ -166,6 +167,36 @@ enum SampleDataSeeder {
         )
         context.insert(first)
         context.insert(second)
+    }
+
+    private static func expandCommunityPostsIfNeeded(outfits: [Outfit], in context: ModelContext) {
+        let existingPosts = (try? context.fetch(FetchDescriptor<CommunityPost>())) ?? []
+        let existingHandles = Set(existingPosts.map(\.authorHandle))
+
+        existingPosts.first(where: { $0.authorHandle == "seoyeon.daily" })?.tags = ["오늘의룩", "빈티지", "시티보이", "데님"]
+        existingPosts.first(where: { $0.authorHandle == "min.archive" })?.tags = ["오늘의룩", "미니멀", "출근룩", "컬러포인트"]
+
+        let samples: [(String, String, String, String, [String], String, Int, Int)] = [
+            ("유나", "retro.yuna", "YN", "체크 셔츠와 워시드 데님으로 만든 편안한 빈티지 룩.", ["오늘의룩", "빈티지", "체크셔츠"], "D7B45A", -6, 61),
+            ("하윤", "office.hayoon", "HY", "회의가 있는 날의 단정한 출근 룩. 스니커즈로 힘을 뺐어요.", ["오늘의룩", "출근룩", "미니멀"], "A7B9CE", -11, 96),
+            ("민서", "color.minseo", "MS", "무채색 사이에 레드 백 하나. 오늘의 컬러 포인트!", ["오늘의룩", "컬러포인트", "가방"], "FF765F", -18, 143),
+        ]
+
+        for (index, sample) in samples.enumerated() where !existingHandles.contains(sample.1) {
+            let post = CommunityPost(
+                authorName: sample.0,
+                authorHandle: sample.1,
+                authorInitials: sample.2,
+                caption: sample.3,
+                tags: sample.4,
+                createdAt: Calendar.current.date(byAdding: .hour, value: sample.6, to: .now) ?? .now,
+                likeCount: sample.7,
+                comments: [],
+                accentHex: sample.5,
+                outfit: outfits.indices.contains(index + 2) ? outfits[index + 2] : outfits.first
+            )
+            context.insert(post)
+        }
     }
 
     private static func createMarketListingsIfNeeded(garments: [Garment], in context: ModelContext) {

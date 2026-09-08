@@ -51,7 +51,8 @@ final class CommunityPost {
     }
 
     var tags: [String] {
-        tagsRaw.split(separator: "|").map(String.init)
+        get { tagsRaw.split(separator: "|").map(String.init) }
+        set { tagsRaw = newValue.joined(separator: "|") }
     }
 
     var comments: [String] {

@@ -8,8 +8,10 @@ struct ProfileView: View {
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
     @Query(filter: #Predicate<CommunityPost> { $0.authorHandle == "my.weary" })
     private var myPosts: [CommunityPost]
+    @Query private var communityPosts: [CommunityPost]
     @State private var showsDemoResetConfirmation = false
     @State private var demoResetMessage: String?
+    @State private var selectedSocialList: SocialListKind?
 
     var body: some View {
         NavigationStack {
@@ -30,6 +32,22 @@ struct ProfileView: View {
                                     .foregroundStyle(WEARyTheme.secondaryInk)
                             }
                         }
+
+                        HStack(spacing: 0) {
+                            socialCountButton(
+                                value: followerUsers.count,
+                                label: "팔로워",
+                                kind: .followers
+                            )
+                            Divider().frame(height: 34)
+                            socialCountButton(
+                                value: followingUsers.count,
+                                label: "팔로잉",
+                                kind: .following
+                            )
+                        }
+                        .padding(.vertical, 12)
+                        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 18))
 
                         HStack(spacing: 10) {
                             MetricPill(value: "\(garments.count)", label: "옷")
@@ -91,6 +109,12 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("MY")
+            .sheet(item: $selectedSocialList) { kind in
+                SocialUserListView(
+                    title: kind == .followers ? "팔로워" : "팔로잉",
+                    users: kind == .followers ? followerUsers : followingUsers
+                )
+            }
             .alert("데모 데이터를 초기화할까요?", isPresented: $showsDemoResetConfirmation) {
                 Button("취소", role: .cancel) {}
                 Button("초기화", role: .destructive) { resetDemoData() }
@@ -117,6 +141,47 @@ struct ProfileView: View {
         }
     }
 
+    private func socialCountButton(value: Int, label: String, kind: SocialListKind) -> some View {
+        Button {
+            selectedSocialList = kind
+        } label: {
+            VStack(spacing: 3) {
+                Text("\(value)")
+                    .font(.headline)
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("profile.\(kind.rawValue)")
+    }
+
+    private var followingUsers: [SocialUser] {
+        var seen = Set<String>()
+        return communityPosts.compactMap { post in
+            guard post.isFollowing,
+                  post.authorHandle != "my.weary",
+                  seen.insert(post.authorHandle).inserted else { return nil }
+            return SocialUser(
+                name: post.authorName,
+                handle: post.authorHandle,
+                initials: post.authorInitials,
+                accentHex: post.accentHex
+            )
+        }
+        .sorted { $0.name < $1.name }
+    }
+
+    private var followerUsers: [SocialUser] {
+        [
+            SocialUser(name: "서연", handle: "seoyeon.daily", initials: "SY", accentHex: "A7B9CE"),
+            SocialUser(name: "민서", handle: "color.minseo", initials: "MS", accentHex: "FF765F"),
+            SocialUser(name: "도윤", handle: "doyoon.fit", initials: "DY", accentHex: "C7F25B"),
+        ]
+    }
+
     private var monthlyDiscoveryText: String {
         guard let interval = Calendar.current.dateInterval(of: .month, for: .now) else {
             return "착장을 기록하면 이번 달의 스타일을 발견할 수 있어요."
@@ -135,5 +200,67 @@ struct ProfileView: View {
             return "아직 이번 달 착장이 없어요. 오늘의 룩부터 가볍게 남겨보세요."
         }
         return "이번 달에는 ‘\(top.0.name)’을 \(top.1)번 입었어요. 나의 취향이 데이터로 쌓이고 있어요."
+    }
+}
+
+private enum SocialListKind: String, Identifiable {
+    case followers
+    case following
+
+    var id: String { rawValue }
+}
+
+private struct SocialUser: Identifiable {
+    let name: String
+    let handle: String
+    let initials: String
+    let accentHex: String
+
+    var id: String { handle }
+}
+
+private struct SocialUserListView: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let users: [SocialUser]
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if users.isEmpty {
+                    ContentUnavailableView(
+                        title == "팔로잉" ? "아직 팔로우한 사람이 없어요" : "아직 팔로워가 없어요",
+                        systemImage: "person.2",
+                        description: Text(title == "팔로잉" ? "피드에서 마음에 드는 스타일의 사용자를 팔로우해 보세요." : "착장을 공유하면 새로운 연결이 시작돼요.")
+                    )
+                } else {
+                    List(users) { user in
+                        HStack(spacing: 12) {
+                            Text(user.initials)
+                                .font(.caption.weight(.black))
+                                .frame(width: 46, height: 46)
+                                .background(Color(hex: user.accentHex), in: Circle())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(user.name).fontWeight(.semibold)
+                                Text("@\(user.handle)")
+                                    .font(.caption)
+                                    .foregroundStyle(WEARyTheme.secondaryInk)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("social.user.\(user.handle)")
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(WEARyTheme.canvas)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("완료") { dismiss() }
+                }
+            }
+        }
     }
 }
