@@ -3,6 +3,12 @@ import SwiftUI
 
 @main
 struct WEARyApp: App {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var didCompleteForcedOnboarding = false
+
+    private let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+    private let forcesOnboarding = ProcessInfo.processInfo.arguments.contains("-ui-testing-onboarding")
+
     private let modelContainer: ModelContainer = {
         let schema = Schema([
             Garment.self,
@@ -23,8 +29,20 @@ struct WEARyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            if shouldShowOnboarding {
+                OnboardingView {
+                    hasCompletedOnboarding = true
+                    didCompleteForcedOnboarding = true
+                }
+            } else {
+                RootTabView()
+            }
         }
         .modelContainer(modelContainer)
+    }
+
+    private var shouldShowOnboarding: Bool {
+        if forcesOnboarding { return !didCompleteForcedOnboarding }
+        return !isUITesting && !hasCompletedOnboarding
     }
 }

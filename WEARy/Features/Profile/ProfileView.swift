@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
     @Query(filter: #Predicate<CommunityPost> { $0.authorHandle == "my.weary" })
@@ -73,6 +74,14 @@ struct ProfileView: View {
                             }
                             .buttonStyle(.bordered)
                             .accessibilityIdentifier("profile.resetDemo")
+
+                            Button {
+                                hasCompletedOnboarding = false
+                            } label: {
+                                Label("앱 안내 다시 보기", systemImage: "questionmark.circle")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(WEARyTheme.ink)
                         }
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
