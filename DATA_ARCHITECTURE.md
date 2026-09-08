@@ -7,7 +7,7 @@ WEARy의 데이터는 소유권과 공개 범위에 따라 두 영역으로 분�
 | 영역 | 저장 위치 | 데이터 소유권 | 예시 |
 | --- | --- | --- | --- |
 | 개인 영역 | SwiftData + 사용자의 CloudKit private database | 사용자 | 옷, 구매 가격, 비공개 착장, 착용 통계 |
-| 서비스 영역 | WEARy API 서버 + 관계형 DB + 오브젝트 스토리지 | 서비스가 사용자 동의 범위에서 처리 | 공개 게시물, 댓글, 팔로우, 판매 상품, 채팅 |
+| 서비스 영역 | Supabase + 필요 시 WEARy API | 서비스가 사용자 동의 범위에서 처리 | 공개 게시물, 댓글, 팔로우, 판매 상품, 채팅 |
 
 핵심 원칙은 다음과 같다.
 
@@ -23,15 +23,38 @@ WEARy의 데이터는 소유권과 공개 범위에 따라 두 영역으로 분�
 ```mermaid
 flowchart LR
     A[SwiftData 로컬 캐시] <--> B[CloudKit Private DB]
-    A -->|사용자가 공개 확정| C[WEARy API]
-    C --> D[(서비스 관계형 DB)]
-    C --> E[(공개 이미지 스토리지)]
+    A -->|사용자가 공개 확정| C[Supabase / WEARy API]
+    C --> D[(Supabase PostgreSQL)]
+    C --> E[(Supabase Storage)]
     F[다른 사용자 앱] <--> C
 
     B -. 서버에서 직접 접근하지 않음 .-> C
 ```
 
 앱 삭제 후 재설치 시 같은 Apple 계정으로 iCloud에 로그인되어 있고 앱의 iCloud 사용이 허용되어 있다면, 개인 영역을 CloudKit에서 다시 동기화하는 경험을 목표로 한다. 동기화가 끝나기 전에는 빈 옷장으로 단정하지 않고 진행 상태를 표시해야 한다.
+
+## 2.1 기술 결정 — Supabase 우선
+
+2026-09-08 기준 공용 커뮤니티·마켓 백엔드는 Supabase를 1차 기술로 채택한다.
+
+| 역할 | 선택 기술 |
+| --- | --- |
+| 커뮤니티 계정 | Supabase Auth + Apple로 로그인 |
+| 관계형 데이터 | Supabase PostgreSQL |
+| 공개 착장·상품 이미지 | Supabase Storage |
+| 초기 댓글·채팅 갱신 | Supabase Realtime |
+| 민감한 상태 변경 | PostgreSQL function 또는 Supabase Edge Functions |
+| 장기 확장 | 동일 PostgreSQL 앞에 WEARy 전용 API 추가 |
+
+선택 이유는 WEARy의 좋아요, 팔로우, 댓글, 상품, 대화 참여자 구조가 관계형 모델에 잘 맞고, 초기 개발 속도를 확보하면서도 PostgreSQL 스키마를 장기 자산으로 유지할 수 있기 때문이다.
+
+다음 원칙을 적용한다.
+
+- iOS 앱에 `service_role` 키를 포함하지 않는다.
+- 앱이 직접 접근하는 모든 공개 테이블과 Storage bucket에 RLS 정책을 적용한다.
+- 피드 조회와 본인 게시물 CRUD는 SDK로 시작하되, 예약·판매 완료·신고 제재처럼 권한이 중요한 작업은 서버 함수로 처리한다.
+- 클라이언트가 보내는 좋아요 수, 작성자 ID와 판매 상태를 신뢰하지 않고 서버에서 검증한다.
+- 첫 서버 범위는 커뮤니티로 제한하고, 안정화 후 마켓과 채팅을 연결한다.
 
 ## 3. 개인 iCloud 영역 ERD
 
@@ -125,7 +148,7 @@ erDiagram
 
 ## 4. 서비스 서버 ERD
 
-이 ERD는 특정 서버 프레임워크와 무관한 논리 모델이다. 첫 서버 MVP에는 게시물, 반응, 판매 상품과 최소 채팅만 구현하고 운영 기능은 순차적으로 추가한다.
+이 ERD는 장기 도메인 전체를 표현한다. 첫 서버 MVP에는 프로필, 게시물과 반응만 구현하고, 판매 상품과 채팅은 커뮤니티 안정화 후 순차적으로 추가한다.
 
 ```mermaid
 erDiagram
@@ -390,11 +413,13 @@ sequenceDiagram
 
 ### 단계 B — 커뮤니티 서버 최소 기능
 
-1. Apple로 로그인과 서버 토큰 검증을 구현한다.
-2. 프로필, 게시물, 미디어 업로드 API를 구현한다.
-3. 좋아요, 댓글, 저장과 팔로우를 구현한다.
-4. 신고, 차단, soft delete와 운영 도구를 함께 구현한다.
-5. 페이지네이션, rate limit, 관측성과 백업을 적용한다.
+1. Supabase 개발·운영 프로젝트와 환경 변수 정책을 구성한다.
+2. Apple로 로그인과 Supabase Auth를 연결한다.
+3. PostgreSQL migration으로 프로필, 게시물과 반응 테이블을 생성한다.
+4. 공개 이미지 Storage bucket과 RLS 정책을 구성한다.
+5. 피드 페이지네이션, 게시물 작성, 좋아요, 댓글, 저장과 팔로우를 구현한다.
+6. 신고, 차단, soft delete와 최소 운영 도구를 함께 구현한다.
+7. rate limit, 관측성과 백업·복원 절차를 적용한다.
 
 ### 단계 C — 패션 중고거래
 
@@ -409,10 +434,9 @@ sequenceDiagram
 
 1. 커뮤니티 중심축: 코디 탐색 중심인지 팔로우 피드 중심인지
 2. 거래 방식: 전국 택배 중심인지 지역 직거래도 포함하는지
-3. 초기 서버 범위: 커뮤니티만 먼저 구축할지 마켓까지 함께 구축할지
-4. 이미지 정책: 얼굴 기본 블러 여부와 원본 보존 기간
-5. 개인 옷 삭제 시 이미 공개한 게시물·상품의 처리 UX
-6. 한 사용자가 여러 Apple 계정 또는 플랫폼을 사용하는 경우의 계정 연결 정책
+3. 이미지 정책: 얼굴 기본 블러 여부와 원본 보존 기간
+4. 개인 옷 삭제 시 이미 공개한 게시물·상품의 처리 UX
+5. 한 사용자가 여러 Apple 계정 또는 플랫폼을 사용하는 경우의 계정 연결 정책
 
 ## 10. Apple 구현 참고자료
 
@@ -421,3 +445,9 @@ sequenceDiagram
 - [CloudKit 개인 데이터베이스](https://developer.apple.com/documentation/cloudkit/ckcontainer/privateclouddatabase)
 - [Apple로 로그인](https://developer.apple.com/sign-in-with-apple/)
 
+## 11. Supabase 구현 참고자료
+
+- [Supabase Apple 로그인](https://supabase.com/docs/guides/auth/social-login/auth-apple)
+- [PostgreSQL Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
+- [Supabase Storage](https://supabase.com/docs/guides/storage)
+- [Supabase Realtime](https://supabase.com/docs/guides/realtime)
