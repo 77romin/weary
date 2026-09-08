@@ -10,6 +10,17 @@ enum SampleDataSeeder {
         try? context.save()
     }
 
+    @MainActor
+    static func resetDemoData(in context: ModelContext) throws {
+        try context.delete(model: CommunityPost.self)
+        try context.delete(model: MarketListing.self)
+        try context.delete(model: OutfitItem.self)
+        try context.delete(model: Outfit.self)
+        try context.delete(model: Garment.self)
+        try context.save()
+        seedIfNeeded(in: context)
+    }
+
     private static func loadOrCreateGarments(in context: ModelContext) -> [Garment] {
         if let existing = try? context.fetch(FetchDescriptor<Garment>()), !existing.isEmpty {
             guard !existing.contains(where: { $0.name == "옐로 체크 셔츠" }) else { return existing }
@@ -66,18 +77,16 @@ enum SampleDataSeeder {
         guard garments.count >= 5 else { return [] }
 
         let calendar = Calendar.current
-        let offsets = [0, -2, -5, -9, -16, -24]
+        let offsets = [0, -1, -2, -4, -6, -9, -13, -17, -22, -28]
         let outfits = offsets.enumerated().compactMap { index, offset -> Outfit? in
             guard let date = calendar.date(byAdding: .day, value: offset, to: .now) else { return nil }
             let outfit = Outfit(
                 wornAt: date,
-                note: index == 0 ? "월요일은 가볍고 선명하게." : "데일리 룩 기록",
+                note: outfitNote(at: index),
                 isPublished: index < 2
             )
             context.insert(outfit)
-            let selected = index.isMultiple(of: 2)
-                ? [garments[0], garments[1], garments[2], garments[3]]
-                : [garments[1], garments[2], garments[4]]
+            let selected = selectedGarments(at: index, from: garments)
             selected.forEach {
                 context.insert(OutfitItem(
                     garment: $0,
@@ -89,6 +98,31 @@ enum SampleDataSeeder {
             return outfit
         }
         return outfits
+    }
+
+    private static func selectedGarments(at index: Int, from garments: [Garment]) -> [Garment] {
+        let byName = Dictionary(uniqueKeysWithValues: garments.map { ($0.name, $0) })
+        let names: [String]
+        switch index % 4 {
+        case 0:
+            names = ["빈티지 레더 재킷", "화이트 베이비 티", "커브드 데님", "실버 러너 스니커즈"]
+        case 1:
+            names = ["화이트 베이비 티", "커브드 데님", "레드 미니 백"]
+        case 2:
+            names = ["빈티지 레더 재킷", "화이트 베이비 티", "커브드 데님"]
+        default:
+            names = ["블랙 니트 드레스", "실버 러너 스니커즈", "레드 미니 백"]
+        }
+        return names.compactMap { byName[$0] }
+    }
+
+    private static func outfitNote(at index: Int) -> String {
+        [
+            "월요일은 가볍고 선명하게.",
+            "레드 백으로 포인트를 준 출근 룩.",
+            "자주 손이 가는 데님 조합.",
+            "블랙 드레스에 편한 스니커즈.",
+        ][index % 4]
     }
 
     private static func createCommunityPostsIfNeeded(outfits: [Outfit], in context: ModelContext) {
@@ -117,24 +151,26 @@ enum SampleDataSeeder {
     private static func createMarketListingsIfNeeded(garments: [Garment], in context: ModelContext) {
         guard (try? context.fetchCount(FetchDescriptor<MarketListing>())) == 0 else { return }
 
-        let sampleGarments = Array(garments.prefix(4))
-        let titles = ["빈티지 레더 재킷", "블랙 니트 드레스", "레드 미니 백", "실버 러너"]
-        let prices = [89_000, 72_000, 48_000, 95_000]
-        let colors = ["B7A08B", "464646", "D94B43", "B9BEC2"]
-
-        for index in titles.indices {
-            let garment = sampleGarments.indices.contains(index) ? sampleGarments[index] : nil
-            context.insert(MarketListing(
-                sellerName: index.isMultiple(of: 2) ? "한남동 옷장" : "연남 빈티지",
-                title: titles[index],
-                detailText: "깨끗하게 보관했고 실제 착용 횟수가 적어요. 편하게 문의해 주세요.",
-                price: prices[index],
-                originalPrice: garment?.purchasePrice,
-                size: garment?.size ?? "FREE",
-                condition: index == 0 ? .likeNew : .excellent,
-                accentHex: colors[index],
-                garment: garment
-            ))
-        }
+        let blackDress = garments.first { $0.name == "블랙 니트 드레스" }
+        let listings = [
+            MarketListing(
+                sellerName: "나의 WEARy", title: "블랙 니트 드레스", detailText: "구매 후 몇 번 입지 않아 판매해요. 착용 기록과 사이즈를 확인해 주세요.",
+                price: 72_000, originalPrice: blackDress?.purchasePrice, size: blackDress?.size ?? "S",
+                condition: .excellent, accentHex: "464646", garment: blackDress
+            ),
+            MarketListing(
+                sellerName: "한남동 옷장", title: "빈티지 레더 재킷", detailText: "부드러운 브라운 컬러의 빈티지 레더 재킷이에요.",
+                price: 89_000, originalPrice: 210_000, size: "M", condition: .likeNew, accentHex: "B7A08B"
+            ),
+            MarketListing(
+                sellerName: "연남 빈티지", title: "레드 미니 백", detailText: "코디에 포인트 주기 좋은 체리 레드 컬러입니다.",
+                price: 48_000, originalPrice: 120_000, size: "FREE", condition: .excellent, accentHex: "D94B43"
+            ),
+            MarketListing(
+                sellerName: "성수 러너", title: "실버 러너 스니커즈", detailText: "가볍고 편해서 데일리로 신기 좋아요.",
+                price: 95_000, originalPrice: 159_000, size: "240", condition: .good, accentHex: "B9BEC2"
+            ),
+        ]
+        listings.forEach(context.insert)
     }
 }

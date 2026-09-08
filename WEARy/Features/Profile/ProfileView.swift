@@ -2,10 +2,13 @@ import SwiftData
 import SwiftUI
 
 struct ProfileView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
     @Query(filter: #Predicate<CommunityPost> { $0.authorHandle == "my.weary" })
     private var myPosts: [CommunityPost]
+    @State private var showsDemoResetConfirmation = false
+    @State private var demoResetMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -58,11 +61,50 @@ struct ProfileView: View {
                         WardrobeInsightsView(garments: garments)
 
                         WardrobeReviewView(garments: garments)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("프로토타입 도구")
+                                .font(.headline)
+                            Text("리허설 중 바뀐 착장, 좋아요와 판매 상태를 처음 상태로 되돌려요.")
+                                .font(.caption)
+                                .foregroundStyle(WEARyTheme.secondaryInk)
+                            Button("데모 데이터 초기화", role: .destructive) {
+                                showsDemoResetConfirmation = true
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("profile.resetDemo")
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 20))
                     }
                     .padding(20)
                 }
             }
             .navigationTitle("MY")
+            .alert("데모 데이터를 초기화할까요?", isPresented: $showsDemoResetConfirmation) {
+                Button("취소", role: .cancel) {}
+                Button("초기화", role: .destructive) { resetDemoData() }
+            } message: {
+                Text("직접 등록한 옷과 착장도 삭제되고 발표용 샘플 데이터가 다시 생성됩니다.")
+            }
+            .alert("데모 데이터", isPresented: Binding(
+                get: { demoResetMessage != nil },
+                set: { if !$0 { demoResetMessage = nil } }
+            )) {
+                Button("확인") { demoResetMessage = nil }
+            } message: {
+                Text(demoResetMessage ?? "")
+            }
+        }
+    }
+
+    private func resetDemoData() {
+        do {
+            try SampleDataSeeder.resetDemoData(in: modelContext)
+            demoResetMessage = "발표용 샘플 데이터로 돌아왔어요."
+        } catch {
+            demoResetMessage = "초기화하지 못했어요. 앱을 다시 실행한 뒤 시도해 주세요."
         }
     }
 
