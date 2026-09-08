@@ -1,13 +1,33 @@
 import Foundation
 import SwiftData
+import UIKit
 
 enum SampleDataSeeder {
     static func seedIfNeeded(in context: ModelContext) {
         let garments = loadOrCreateGarments(in: context)
+        applyDemoImagesIfNeeded(to: garments)
         let outfits = loadOrCreateOutfits(with: garments, in: context)
         createCommunityPostsIfNeeded(outfits: outfits, in: context)
         createMarketListingsIfNeeded(garments: garments, in: context)
         try? context.save()
+    }
+
+    private static func applyDemoImagesIfNeeded(to garments: [Garment]) {
+        let assetsByName = [
+            "빈티지 레더 재킷": "DemoLeatherJacket",
+            "화이트 베이비 티": "DemoWhiteTee",
+            "커브드 데님": "DemoCurvedDenim",
+            "실버 러너 스니커즈": "DemoSilverSneakers",
+            "레드 미니 백": "DemoRedBag",
+            "블랙 니트 드레스": "DemoBlackDress",
+            "옐로 체크 셔츠": "DemoYellowShirt",
+        ]
+
+        for garment in garments where garment.cutoutImageData == nil {
+            guard let assetName = assetsByName[garment.name],
+                  let data = UIImage(named: assetName)?.pngData() else { continue }
+            garment.cutoutImageData = data
+        }
     }
 
     @MainActor
