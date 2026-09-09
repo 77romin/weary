@@ -2,11 +2,16 @@ import SwiftData
 import SwiftUI
 
 struct FeedView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \CommunityPost.createdAt, order: .reverse) private var posts: [CommunityPost]
     @State private var selectedTopic = "전체"
     @State private var showingComposer = false
+    @State private var isAtFeedTop = true
+    @State private var isRefreshing = false
+    @State private var refreshCount = 0
 
     private let topics = ["전체", "오늘의 룩", "미니멀", "빈티지", "출근 룩", "컬러 포인트"]
+    private let feedTopAnchor = "feed.top"
 
     private var filteredPosts: [CommunityPost] {
         guard selectedTopic != "전체" else { return posts }
@@ -15,49 +20,80 @@ struct FeedView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                WEARyTheme.canvas.ignoresSafeArea()
-                if posts.isEmpty {
-                    ContentUnavailableView(
-                        "첫 스타일을 기다리고 있어요",
-                        systemImage: "rectangle.stack.badge.plus",
-                        description: Text("착장을 기록하거나 + 버튼에서 첫 게시물을 작성해 보세요.")
-                    )
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 18) {
-                            styleTopics
-                            if filteredPosts.isEmpty {
-                                ContentUnavailableView(
-                                    "아직 \(selectedTopic) 게시물이 없어요",
-                                    systemImage: "sparkles",
-                                    description: Text("내 착장으로 이 스타일의 첫 게시물을 작성해 보세요.")
-                                )
-                                .padding(.top, 50)
-                            } else {
-                                ForEach(filteredPosts) { post in
-                                    NavigationLink(value: post) {
-                                        CommunityPostCard(post: post)
+            ScrollViewReader { proxy in
+                ZStack {
+                    WEARyTheme.canvas.ignoresSafeArea()
+                    if posts.isEmpty {
+                        ContentUnavailableView(
+                            "첫 스타일을 기다리고 있어요",
+                            systemImage: "rectangle.stack.badge.plus",
+                            description: Text("착장을 기록하거나 + 버튼에서 첫 게시물을 작성해 보세요.")
+                        )
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 18) {
+                                Color.clear
+                                    .frame(height: 0)
+                                    .id(feedTopAnchor)
+                                styleTopics
+                                if filteredPosts.isEmpty {
+                                    ContentUnavailableView(
+                                        "아직 \(selectedTopic) 게시물이 없어요",
+                                        systemImage: "sparkles",
+                                        description: Text("내 착장으로 이 스타일의 첫 게시물을 작성해 보세요.")
+                                    )
+                                    .padding(.top, 50)
+                                } else {
+                                    ForEach(filteredPosts) { post in
+                                        NavigationLink(value: post) {
+                                            CommunityPostCard(post: post)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
+                            .padding(18)
                         }
-                        .padding(18)
+                        .onScrollGeometryChange(for: Bool.self) { geometry in
+                            geometry.contentOffset.y + geometry.contentInsets.top <= 12
+                        } action: { _, isAtTop in
+                            isAtFeedTop = isAtTop
+                        }
                     }
                 }
-            }
-            .navigationTitle("!WEARy")
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showingComposer = true
-                    } label: {
-                        Image(systemName: "plus")
+                .navigationTitle("!WEARy")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Button {
+                            handleLogoTap(using: proxy)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("!WEARy")
+                                    .font(.system(size: 27, weight: .black, design: .rounded))
+                                    .tracking(-1)
+                                if isRefreshing {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+                            .foregroundStyle(WEARyTheme.ink)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(isRefreshing ? "피드 최신화 중" : "피드 처음으로")
+                        .accessibilityValue("새로고침 \(refreshCount)회")
+                        .accessibilityIdentifier("feed.logo")
                     }
-                    .accessibilityLabel("피드 게시물 작성")
-                    .accessibilityIdentifier("feed.compose")
-                    Image(systemName: "bell")
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button {
+                            showingComposer = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("피드 게시물 작성")
+                        .accessibilityIdentifier("feed.compose")
+                        Image(systemName: "bell")
+                    }
                 }
             }
             .navigationDestination(for: CommunityPost.self) { post in
@@ -66,6 +102,28 @@ struct FeedView: View {
             .sheet(isPresented: $showingComposer) {
                 CreateCommunityPostView()
             }
+        }
+    }
+
+    private func handleLogoTap(using proxy: ScrollViewProxy) {
+        if isAtFeedTop {
+            refreshFeed()
+        } else {
+            isAtFeedTop = true
+            withAnimation(.snappy) {
+                proxy.scrollTo(feedTopAnchor, anchor: .top)
+            }
+        }
+    }
+
+    private func refreshFeed() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        refreshCount += 1
+        Task { @MainActor in
+            SampleDataSeeder.seedIfNeeded(in: modelContext)
+            try? await Task.sleep(for: .milliseconds(650))
+            isRefreshing = false
         }
     }
 

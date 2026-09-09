@@ -39,6 +39,7 @@ final class WEARyUITests: XCTestCase {
         let app = launchApp()
         app.tabBars.buttons["피드"].tap()
         XCTAssertTrue(app.navigationBars["!WEARy"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["feed.logo"].exists)
         XCTAssertTrue(app.staticTexts["서연"].waitForExistence(timeout: 3))
         XCTAssertGreaterThan(
             app.descendants(matching: .any).matching(identifier: "feed.outfitPhoto").count,
@@ -54,6 +55,30 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["market.buyerLike"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["market.buyerChat"].exists)
         XCTAssertFalse(app.buttons["구매 요청"].exists)
+    }
+
+    func testFeedLogoScrollsToTopThenRefreshes() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        let logo = app.buttons["feed.logo"]
+        let topTopic = app.buttons["feed.topic.전체"]
+        XCTAssertTrue(logo.waitForExistence(timeout: 3))
+
+        app.swipeUp()
+        XCTAssertFalse(topTopic.isHittable)
+        logo.tap()
+        let returnedToTop = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"),
+            object: topTopic
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [returnedToTop], timeout: 3), .completed)
+
+        logo.tap()
+        let didRefresh = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "새로고침 1회"),
+            object: logo
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [didRefresh], timeout: 2), .completed)
     }
 
     func testOwnedMarketListingProvidesSellerManagement() throws {
