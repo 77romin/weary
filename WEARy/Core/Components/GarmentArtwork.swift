@@ -69,6 +69,9 @@ struct MetricPill: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.system(.headline, design: .rounded, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+                .allowsTightening(true)
             Text(label)
                 .font(.caption)
                 .foregroundStyle(WEARyTheme.secondaryInk)

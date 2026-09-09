@@ -199,7 +199,7 @@ struct GarmentDetailView: View {
 
     private var costPerWearText: String {
         guard let cost = garment.costPerWear else { return "—" }
-        return cost.formatted(.number.notation(.compactName)) + "원"
+        return cost.formatted(.number.grouping(.automatic)) + "원"
     }
 
     private var purchaseDateText: String {

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SwiftData
 import Testing
@@ -5,6 +6,31 @@ import Testing
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("누끼 이미지는 보이는 옷 영역에 맞춰 투명 여백을 자른다")
+    func cutoutImageCropsTransparentMargins() throws {
+        let width = 100
+        let height = 100
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try #require(CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                | CGBitmapInfo.byteOrder32Big.rawValue
+        ))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 30, y: 20, width: 20, height: 40))
+        let sourceImage = try #require(context.makeImage())
+
+        let croppedImage = try #require(GarmentCutoutService.cropToVisibleContent(sourceImage))
+
+        #expect(croppedImage.width == 24)
+        #expect(croppedImage.height == 44)
+    }
+
     @Test("데모 분석기는 카테고리별 후보를 반환한다")
     @MainActor
     func analyzerReturnsCategoryGroups() async throws {
