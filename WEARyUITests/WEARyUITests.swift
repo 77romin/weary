@@ -81,7 +81,7 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["만날 장소"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.textFields["market.placeQuery"].exists)
         XCTAssertTrue(app.otherElements["market.placeMap"].exists)
-        app.buttons["취소"].tap()
+        app.navigationBars["만날 장소"].buttons["취소"].tap()
         app.swipeUp()
         XCTAssertTrue(app.buttons["market.editMarkSold"].waitForExistence(timeout: 3))
     }
