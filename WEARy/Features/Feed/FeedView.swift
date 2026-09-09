@@ -347,10 +347,6 @@ private struct OutfitComposerPreview: View {
 struct CommunityLookArtwork: View {
     let post: CommunityPost
 
-    private var itemCount: Int {
-        post.outfit?.items.count ?? 0
-    }
-
     var body: some View {
         ZStack {
             LinearGradient(
@@ -371,17 +367,6 @@ struct CommunityLookArtwork: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .foregroundStyle(WEARyTheme.ink.opacity(0.7))
-            }
-            VStack {
-                Spacer()
-                HStack {
-                    Text("\(itemCount) ITEMS")
-                        .font(.caption2.weight(.black)).tracking(1.2)
-                        .padding(.horizontal, 10).padding(.vertical, 7)
-                        .background(.ultraThinMaterial, in: Capsule())
-                    Spacer()
-                }
-                .padding(14)
             }
         }
         .clipped()

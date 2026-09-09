@@ -276,4 +276,34 @@ struct OutfitFlowTests {
         #expect(outfit.items.compactMap(\.garment?.id) == [bottom.id])
         #expect(bottom.wearCount == 1)
     }
+
+    @Test("착장 수정은 사용자가 지정한 아이템 순서를 저장한다")
+    @MainActor
+    func outfitEditingPreservesCustomItemOrder() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: Garment.self, Outfit.self, OutfitItem.self, CommunityPost.self, MarketListing.self,
+            configurations: configuration
+        )
+        let context = container.mainContext
+        let hat = Garment(name: "비니", category: .hat, colorName: "블랙", colorHex: "111111")
+        let shoes = Garment(name: "스니커즈", category: .shoes, colorName: "화이트", colorHex: "FFFFFF")
+        let outfit = Outfit(wornAt: .now)
+        context.insert(hat)
+        context.insert(shoes)
+        context.insert(outfit)
+        context.insert(OutfitItem(garment: hat, outfit: outfit))
+        context.insert(OutfitItem(garment: shoes, outfit: outfit))
+        try context.save()
+
+        try OutfitRecordService.update(
+            outfit,
+            wornAt: outfit.wornAt,
+            note: "신발을 먼저 보여주기",
+            selectedGarments: [shoes, hat],
+            in: context
+        )
+
+        #expect(outfit.orderedItems.compactMap(\.garment?.id) == [shoes.id, hat.id])
+    }
 }

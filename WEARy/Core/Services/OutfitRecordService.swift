@@ -21,20 +21,16 @@ enum OutfitRecordService {
         selectedGarments: [Garment],
         in context: ModelContext
     ) throws {
-        let uniqueGarments = Dictionary(
-            selectedGarments.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        var seenGarmentIDs = Set<UUID>()
+        let uniqueGarments = selectedGarments.filter { garment in
+            seenGarmentIDs.insert(garment.id).inserted
+        }
         guard !uniqueGarments.isEmpty else { throw OutfitRecordError.emptySelection }
 
-        let selectedIDs = Set(uniqueGarments.keys)
+        let selectedIDs = Set(uniqueGarments.map(\.id))
         let existingIDs = Set(outfit.items.compactMap(\.garment?.id))
-        let orderedGarments = uniqueGarments.values.sorted {
-            if $0.category.outfitSortOrder == $1.category.outfitSortOrder { return $0.name < $1.name }
-            return $0.category.outfitSortOrder < $1.category.outfitSortOrder
-        }
         let orderByGarmentID = Dictionary(
-            uniqueKeysWithValues: orderedGarments.enumerated().map { ($0.element.id, $0.offset) }
+            uniqueKeysWithValues: uniqueGarments.enumerated().map { ($0.element.id, $0.offset) }
         )
 
         outfit.items
@@ -44,7 +40,7 @@ enum OutfitRecordService {
             }
             .forEach(context.delete)
 
-        for garment in uniqueGarments.values where !existingIDs.contains(garment.id) {
+        for garment in uniqueGarments where !existingIDs.contains(garment.id) {
             context.insert(OutfitItem(
                 garment: garment,
                 outfit: outfit,

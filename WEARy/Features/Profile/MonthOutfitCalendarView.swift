@@ -425,14 +425,15 @@ private struct OutfitEditorView: View {
     let outfit: Outfit
     @State private var wornAt: Date
     @State private var note: String
-    @State private var selectedGarmentIDs: Set<UUID>
+    @State private var orderedGarmentIDs: [UUID]
+    @State private var itemEditMode: EditMode = .active
     @State private var saveError: String?
 
     init(outfit: Outfit) {
         self.outfit = outfit
         _wornAt = State(initialValue: outfit.wornAt)
         _note = State(initialValue: outfit.note)
-        _selectedGarmentIDs = State(initialValue: Set(outfit.items.compactMap(\.garment?.id)))
+        _orderedGarmentIDs = State(initialValue: outfit.orderedItems.compactMap(\.garment?.id))
     }
 
     var body: some View {
@@ -446,33 +447,59 @@ private struct OutfitEditorView: View {
                 }
 
                 Section {
-                    ForEach(garments) { garment in
-                        Button {
-                            toggle(garment)
-                        } label: {
-                            HStack(spacing: 12) {
-                                GarmentCutoutThumbnail(garment: garment)
-                                    .frame(width: 48, height: 48)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(garment.name).fontWeight(.semibold)
-                                    Text("\(garment.category.rawValue) · \(garment.brand)")
-                                        .font(.caption)
-                                        .foregroundStyle(WEARyTheme.secondaryInk)
-                                }
-                                Spacer()
-                                Image(systemName: selectedGarmentIDs.contains(garment.id)
-                                      ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedGarmentIDs.contains(garment.id)
-                                                     ? WEARyTheme.coral : WEARyTheme.secondaryInk)
+                    ForEach(selectedGarments) { garment in
+                        HStack(spacing: 12) {
+                            GarmentCutoutThumbnail(garment: garment)
+                                .frame(width: 48, height: 48)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(garment.name).fontWeight(.semibold)
+                                Text("\(garment.category.rawValue) · \(garment.brand)")
+                                    .font(.caption)
+                                    .foregroundStyle(WEARyTheme.secondaryInk)
                             }
-                            .contentShape(Rectangle())
+                            Spacer()
+                            Button {
+                                remove(garment)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(WEARyTheme.coral)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(garment.name) 착장에서 빼기")
                         }
-                        .buttonStyle(.plain)
                     }
+                    .onMove(perform: moveSelectedGarments)
                 } header: {
-                    Text("입은 옷 · \(selectedGarmentIDs.count)개")
+                    Text("입은 옷 · \(orderedGarmentIDs.count)개")
                 } footer: {
-                    Text("옷을 빼거나 추가하면 착용 통계가 자동으로 다시 계산됩니다.")
+                    Text("오른쪽 핸들을 드래그해 순서를 바꿀 수 있어요. 옷을 빼거나 추가하면 착용 통계도 다시 계산됩니다.")
+                }
+                .accessibilityIdentifier("outfit.itemOrder")
+
+                if !availableGarments.isEmpty {
+                    Section("옷장에서 추가") {
+                        ForEach(availableGarments) { garment in
+                            Button {
+                                add(garment)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    GarmentCutoutThumbnail(garment: garment)
+                                        .frame(width: 48, height: 48)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(garment.name).fontWeight(.semibold)
+                                        Text("\(garment.category.rawValue) · \(garment.brand)")
+                                            .font(.caption)
+                                            .foregroundStyle(WEARyTheme.secondaryInk)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(WEARyTheme.coral)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
 
                 if outfit.isPublished {
@@ -500,19 +527,35 @@ private struct OutfitEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("저장", action: save)
                         .fontWeight(.bold)
-                        .disabled(selectedGarmentIDs.isEmpty)
+                        .disabled(orderedGarmentIDs.isEmpty)
                         .accessibilityIdentifier("outfit.save")
                 }
             }
+            .environment(\.editMode, $itemEditMode)
         }
     }
 
-    private func toggle(_ garment: Garment) {
-        if selectedGarmentIDs.contains(garment.id) {
-            selectedGarmentIDs.remove(garment.id)
-        } else {
-            selectedGarmentIDs.insert(garment.id)
-        }
+    private var selectedGarments: [Garment] {
+        let garmentsByID = Dictionary(uniqueKeysWithValues: garments.map { ($0.id, $0) })
+        return orderedGarmentIDs.compactMap { garmentsByID[$0] }
+    }
+
+    private var availableGarments: [Garment] {
+        let selectedIDs = Set(orderedGarmentIDs)
+        return garments.filter { !selectedIDs.contains($0.id) }
+    }
+
+    private func add(_ garment: Garment) {
+        guard !orderedGarmentIDs.contains(garment.id) else { return }
+        orderedGarmentIDs.append(garment.id)
+    }
+
+    private func remove(_ garment: Garment) {
+        orderedGarmentIDs.removeAll { $0 == garment.id }
+    }
+
+    private func moveSelectedGarments(from source: IndexSet, to destination: Int) {
+        orderedGarmentIDs.move(fromOffsets: source, toOffset: destination)
     }
 
     private func save() {
@@ -521,7 +564,7 @@ private struct OutfitEditorView: View {
                 outfit,
                 wornAt: wornAt,
                 note: note,
-                selectedGarments: garments.filter { selectedGarmentIDs.contains($0.id) },
+                selectedGarments: selectedGarments,
                 in: modelContext
             )
             dismiss()
