@@ -1,10 +1,7 @@
-import SwiftData
 import SwiftUI
 
 struct RootTabView: View {
-    @Environment(\.modelContext) private var modelContext
-    @State private var selectedTab: AppTab = .wardrobe
-    @State private var didSeed = false
+    @State private var selectedTab: AppTab = .feed
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -29,11 +26,6 @@ struct RootTabView: View {
                 .tag(AppTab.profile)
         }
         .tint(WEARyTheme.ink)
-        .task {
-            guard !didSeed else { return }
-            didSeed = true
-            SampleDataSeeder.seedIfNeeded(in: modelContext)
-        }
     }
 }
 

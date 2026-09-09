@@ -12,7 +12,7 @@ final class WEARyUITests: XCTestCase {
     func testCoreOutfitFlowUpdatesMyPage() throws {
         continueAfterFailure = false
         let app = launchApp()
-        XCTAssertTrue(app.navigationBars["옷장"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["!WEARy"].waitForExistence(timeout: 3))
 
         app.tabBars.buttons["기록"].tap()
         XCTAssertTrue(app.buttons["capture.camera"].waitForExistence(timeout: 3))
@@ -171,6 +171,7 @@ final class WEARyUITests: XCTestCase {
         continueAfterFailure = false
         let app = launchApp()
 
+        app.tabBars.buttons["옷장"].tap()
         app.buttons["새 옷 등록"].tap()
         XCTAssertTrue(app.navigationBars["새 옷 등록"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts["빠른 등록"].exists)
@@ -186,7 +187,7 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.textFields["사이즈 (선택)"].exists)
     }
 
-    func testOnboardingExplainsCoreLoopAndEntersWardrobe() throws {
+    func testOnboardingExplainsCoreLoopAndEntersFeed() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing", "-ui-testing-onboarding"]
@@ -199,7 +200,7 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["내 취향을 발견하고\n다음 옷장으로"].waitForExistence(timeout: 2))
         app.buttons["onboarding.start"].tap()
 
-        XCTAssertTrue(app.navigationBars["옷장"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["!WEARy"].waitForExistence(timeout: 3))
     }
 
     func testAccessibilityTextSizeKeepsCoreNavigationUsable() throws {
@@ -213,7 +214,7 @@ final class WEARyUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.navigationBars["옷장"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["!WEARy"].waitForExistence(timeout: 3))
         app.tabBars.buttons["기록"].tap()
         XCTAssertTrue(app.buttons["capture.sample"].waitForExistence(timeout: 3))
         app.tabBars.buttons["MY"].tap()

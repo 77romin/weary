@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum WEARyTheme {
+    static let snow = Color(hex: "FFFAFA")
     static let canvas = Color(hex: "F5F1E8")
     static let surface = Color(hex: "FFFCF6")
     static let ink = Color(hex: "171714")
