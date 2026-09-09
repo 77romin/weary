@@ -36,6 +36,15 @@ struct FeedView: View {
                                     .frame(height: 0)
                                     .id(feedTopAnchor)
                                 styleTopics
+                                if isRefreshing {
+                                    ProgressView()
+                                        .controlSize(.regular)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 6)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                        .accessibilityLabel("피드 최신화 중")
+                                        .accessibilityIdentifier("feed.refreshIndicator")
+                                }
                                 if filteredPosts.isEmpty {
                                     ContentUnavailableView(
                                         "아직 \(selectedTopic) 게시물이 없어요",
@@ -68,15 +77,9 @@ struct FeedView: View {
                         Button {
                             handleLogoTap(using: proxy)
                         } label: {
-                            HStack(spacing: 8) {
-                                Text("!WEARy")
-                                    .font(.system(size: 27, weight: .black, design: .rounded))
-                                    .tracking(-1)
-                                if isRefreshing {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                            }
+                            Text("!WEARy")
+                                .font(.system(size: 27, weight: .black, design: .rounded))
+                                .tracking(-1)
                             .foregroundStyle(WEARyTheme.ink)
                         }
                         .buttonStyle(.plain)
