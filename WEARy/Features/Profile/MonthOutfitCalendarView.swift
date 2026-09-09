@@ -426,7 +426,6 @@ private struct OutfitEditorView: View {
     @State private var wornAt: Date
     @State private var note: String
     @State private var orderedGarmentIDs: [UUID]
-    @State private var itemEditMode: EditMode = .active
     @State private var saveError: String?
 
     init(outfit: Outfit) {
@@ -447,25 +446,27 @@ private struct OutfitEditorView: View {
                 }
 
                 Section {
-                    ForEach(selectedGarments) { garment in
-                        HStack(spacing: 12) {
-                            GarmentCutoutThumbnail(garment: garment)
-                                .frame(width: 48, height: 48)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(garment.name).fontWeight(.semibold)
-                                Text("\(garment.category.rawValue) · \(garment.brand)")
-                                    .font(.caption)
-                                    .foregroundStyle(WEARyTheme.secondaryInk)
+                    ForEach(orderedGarmentIDs, id: \.self) { garmentID in
+                        if let garment = garment(withID: garmentID) {
+                            HStack(spacing: 12) {
+                                GarmentCutoutThumbnail(garment: garment)
+                                    .frame(width: 48, height: 48)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(garment.name).fontWeight(.semibold)
+                                    Text("\(garment.category.rawValue) · \(garment.brand)")
+                                        .font(.caption)
+                                        .foregroundStyle(WEARyTheme.secondaryInk)
+                                }
+                                Spacer()
+                                Button {
+                                    remove(garment)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(WEARyTheme.coral)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("\(garment.name) 착장에서 빼기")
                             }
-                            Spacer()
-                            Button {
-                                remove(garment)
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(WEARyTheme.coral)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(garment.name) 착장에서 빼기")
                         }
                     }
                     .onMove(perform: moveSelectedGarments)
@@ -531,8 +532,12 @@ private struct OutfitEditorView: View {
                         .accessibilityIdentifier("outfit.save")
                 }
             }
-            .environment(\.editMode, $itemEditMode)
+            .environment(\.editMode, .constant(.active))
         }
+    }
+
+    private func garment(withID id: UUID) -> Garment? {
+        garments.first { $0.id == id }
     }
 
     private var selectedGarments: [Garment] {
