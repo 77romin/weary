@@ -240,7 +240,7 @@ xcodebuild -project WEARy.xcodeproj \
 - [x] 로딩, 빈 화면 및 오류 상태 점검
 - [x] 접근성 라벨과 Dynamic Type 기본 점검
 - [x] 시뮬레이터 핵심 흐름 자동 UI 테스트
-- [ ] 실제 iPhone에서 핵심 흐름 테스트
+- [x] 실제 iPhone에서 옷 등록–착장 기록–MY 캘린더 핵심 흐름 테스트
 - [x] 주요 버그 수정 및 UI 다듬기
 
 ### 2026-09-13 일요일 — 시연 준비
