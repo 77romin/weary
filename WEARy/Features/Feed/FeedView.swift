@@ -31,10 +31,11 @@ struct FeedView: View {
                         )
                     } else {
                         ScrollView {
+                            Color.clear
+                            .frame(height: 1)
+                            .id(feedTopAnchor)
+
                             LazyVStack(spacing: 18) {
-                                Color.clear
-                                    .frame(height: 0)
-                                    .id(feedTopAnchor)
                                 styleTopics
                                 if isRefreshing {
                                     ProgressView()
@@ -63,10 +64,10 @@ struct FeedView: View {
                             }
                             .padding(18)
                         }
-                        .onScrollGeometryChange(for: Bool.self) { geometry in
-                            geometry.contentOffset.y + geometry.contentInsets.top <= 12
-                        } action: { _, isAtTop in
-                            isAtFeedTop = isAtTop
+                        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                            geometry.contentOffset.y
+                        } action: { _, offset in
+                            isAtFeedTop = offset <= 2
                         }
                     }
                 }
@@ -109,13 +110,13 @@ struct FeedView: View {
     }
 
     private func handleLogoTap(using proxy: ScrollViewProxy) {
-        if isAtFeedTop {
+        let shouldRefresh = isAtFeedTop
+        withAnimation(.easeOut(duration: 0.38)) {
+            proxy.scrollTo(feedTopAnchor, anchor: .top)
+        }
+        isAtFeedTop = true
+        if shouldRefresh {
             refreshFeed()
-        } else {
-            isAtFeedTop = true
-            withAnimation(.snappy) {
-                proxy.scrollTo(feedTopAnchor, anchor: .top)
-            }
         }
     }
 

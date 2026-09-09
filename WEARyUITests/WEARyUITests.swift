@@ -72,6 +72,7 @@ final class WEARyUITests: XCTestCase {
             object: topTopic
         )
         XCTAssertEqual(XCTWaiter.wait(for: [returnedToTop], timeout: 3), .completed)
+        XCTAssertEqual(logo.value as? String, "새로고침 0회")
 
         logo.tap()
         let didRefresh = XCTNSPredicateExpectation(
