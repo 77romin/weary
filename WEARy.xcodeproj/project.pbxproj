@@ -21,6 +21,7 @@
 		5BA98BB92C99AB431A3E1FE4 /* OutfitRecordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A4B8F85505A05A4CA45B18 /* OutfitRecordService.swift */; };
 		6271A2A1CE369A5C51B74703 /* WEARyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AD6B04DD18E16C7DF385DB /* WEARyApp.swift */; };
 		6C3EDF65005EB3E3434A6D40 /* GarmentArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8201B35CDC2D7F227B435F /* GarmentArtwork.swift */; };
+		730AFC137E610F382521084B /* MeetingPlacePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA76ACD8AA13CB84801A550D /* MeetingPlacePickerView.swift */; };
 		73DFF9DD177F48648ECF99C3 /* Garment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95B430ABCABDD13607100A /* Garment.swift */; };
 		7C06A6D65488CCA798BC9143 /* WEARyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE9CF6B3115EC06903CC4CD /* WEARyTheme.swift */; };
 		8ACDE1A80D759B41221FFC4C /* WEARyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7D1E359601AB7551718EEA /* WEARyUITests.swift */; };
@@ -85,6 +86,7 @@
 		C79D020B4D50CA81A44531D6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E5812FFDF4ED64C5045A858F /* OutfitFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitFlowTests.swift; sourceTree = "<group>"; };
 		F715E8814192EB9396202EFA /* WardrobeInsights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardrobeInsights.swift; sourceTree = "<group>"; };
+		FA76ACD8AA13CB84801A550D /* MeetingPlacePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPlacePickerView.swift; sourceTree = "<group>"; };
 		FD460AAFAE65B8AA4C82F2D5 /* WEARyTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WEARyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -239,6 +241,7 @@
 			isa = PBXGroup;
 			children = (
 				34A3E80602847222DDA58904 /* MarketView.swift */,
+				FA76ACD8AA13CB84801A550D /* MeetingPlacePickerView.swift */,
 			);
 			path = Market;
 			sourceTree = "<group>";
@@ -424,6 +427,7 @@
 				FE65C978383ACCB7DB2E2D7D /* GarmentEditorView.swift in Sources */,
 				3599C73CC95D3B1D2DD0D979 /* MarketListing.swift in Sources */,
 				17E4EB45CA9B68F0FC439FE8 /* MarketView.swift in Sources */,
+				730AFC137E610F382521084B /* MeetingPlacePickerView.swift in Sources */,
 				44848AC067F5ED6A2D9E78D2 /* MonthOutfitCalendarView.swift in Sources */,
 				8FEE8FB4FB02C415342E37D2 /* OnboardingView.swift in Sources */,
 				910CB1F1682B2CBA66F66FFD /* Outfit.swift in Sources */,

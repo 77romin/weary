@@ -24,6 +24,7 @@ final class MarketListing {
     var title: String
     var detailText: String
     var price: Int
+    var previousPrice: Int?
     var originalPrice: Int?
     var size: String
     var conditionRaw: String
@@ -32,6 +33,9 @@ final class MarketListing {
     var isLiked: Bool
     var accentHex: String
     var meetingPlace: String?
+    var meetingAddress: String?
+    var meetingLatitude: Double?
+    var meetingLongitude: Double?
     var chatCount: Int?
     var garment: Garment?
 
@@ -41,6 +45,7 @@ final class MarketListing {
         title: String,
         detailText: String,
         price: Int,
+        previousPrice: Int? = nil,
         originalPrice: Int? = nil,
         size: String = "",
         condition: ListingCondition = .excellent,
@@ -49,6 +54,9 @@ final class MarketListing {
         isLiked: Bool = false,
         accentHex: String = "B7A08B",
         meetingPlace: String? = nil,
+        meetingAddress: String? = nil,
+        meetingLatitude: Double? = nil,
+        meetingLongitude: Double? = nil,
         chatCount: Int? = nil,
         garment: Garment? = nil
     ) {
@@ -57,6 +65,7 @@ final class MarketListing {
         self.title = title
         self.detailText = detailText
         self.price = price
+        self.previousPrice = previousPrice
         self.originalPrice = originalPrice
         self.size = size
         conditionRaw = condition.rawValue
@@ -65,6 +74,9 @@ final class MarketListing {
         self.isLiked = isLiked
         self.accentHex = accentHex
         self.meetingPlace = meetingPlace
+        self.meetingAddress = meetingAddress
+        self.meetingLatitude = meetingLatitude
+        self.meetingLongitude = meetingLongitude
         self.chatCount = chatCount
         self.garment = garment
     }
@@ -90,5 +102,20 @@ final class MarketListing {
 
     var displayedChatCount: Int {
         max(0, chatCount ?? 0)
+    }
+
+    var hasPinnedMeetingPlace: Bool {
+        meetingLatitude != nil && meetingLongitude != nil
+    }
+
+    var priceChange: Int? {
+        guard let previousPrice, previousPrice != price else { return nil }
+        return price - previousPrice
+    }
+
+    func updatePrice(to newPrice: Int) {
+        guard newPrice > 0, newPrice != price else { return }
+        previousPrice = price
+        price = newPrice
     }
 }

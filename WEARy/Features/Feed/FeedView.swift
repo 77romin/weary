@@ -188,13 +188,23 @@ private struct CreateCommunityPostView: View {
     @State private var selectedOutfitID: UUID?
     @State private var caption = ""
     @State private var tagsText = "오늘의룩"
+    @State private var orderedItemIDs: [UUID] = []
+    @State private var itemEditMode: EditMode = .active
 
     private var availableOutfits: [Outfit] {
-        outfits.filter(\.isConfirmed)
+        outfits.filter { $0.isConfirmed && $0.photoData != nil }
     }
 
     private var selectedOutfit: Outfit? {
         availableOutfits.first { $0.id == selectedOutfitID }
+    }
+
+    private var selectedOrderedItems: [OutfitItem] {
+        guard let selectedOutfit else { return [] }
+        let itemsByID = Dictionary(uniqueKeysWithValues: selectedOutfit.items.map { ($0.id, $0) })
+        let explicitlyOrdered = orderedItemIDs.compactMap { itemsByID[$0] }
+        let includedIDs = Set(explicitlyOrdered.map(\.id))
+        return explicitlyOrdered + selectedOutfit.orderedItems.filter { !includedIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -203,9 +213,9 @@ private struct CreateCommunityPostView: View {
                 Section("공개할 착장") {
                     if availableOutfits.isEmpty {
                         ContentUnavailableView(
-                            "저장된 착장이 없어요",
+                            "사진이 있는 착장이 없어요",
                             systemImage: "camera",
-                            description: Text("기록 탭에서 착장을 먼저 남겨주세요.")
+                            description: Text("기록 탭에서 실제 착장 사진을 먼저 남겨주세요.")
                         )
                     } else {
                         Picker("착장 선택", selection: $selectedOutfitID) {
@@ -218,6 +228,31 @@ private struct CreateCommunityPostView: View {
                             OutfitComposerPreview(outfit: selectedOutfit)
                         }
                     }
+                }
+
+                if selectedOutfit != nil {
+                    Section {
+                        ForEach(selectedOrderedItems) { item in
+                            if let garment = item.garment {
+                                HStack(spacing: 12) {
+                                    GarmentCutoutThumbnail(garment: garment)
+                                        .frame(width: 48, height: 48)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(garment.name).font(.subheadline.weight(.semibold))
+                                        Text(garment.category.rawValue)
+                                            .font(.caption)
+                                            .foregroundStyle(WEARyTheme.secondaryInk)
+                                    }
+                                }
+                            }
+                        }
+                        .onMove(perform: moveItems)
+                    } header: {
+                        Text("이 룩의 아이템 순서")
+                    } footer: {
+                        Text("기본은 모자–아우터–상의–원피스–하의–신발–가방–액세서리 순서예요. 오른쪽 핸들을 드래그해 바꿀 수 있어요.")
+                    }
+                    .accessibilityIdentifier("feed.itemOrder")
                 }
 
                 Section("게시물") {
@@ -250,7 +285,12 @@ private struct CreateCommunityPostView: View {
             }
             .onAppear {
                 if selectedOutfitID == nil { selectedOutfitID = availableOutfits.first?.id }
+                resetItemOrder()
             }
+            .onChange(of: selectedOutfitID) {
+                resetItemOrder()
+            }
+            .environment(\.editMode, $itemEditMode)
         }
     }
 
@@ -260,6 +300,7 @@ private struct CreateCommunityPostView: View {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "") }
             .filter { !$0.isEmpty }
+        selectedOutfit.applyItemOrder(orderedItemIDs)
         selectedOutfit.isPublished = true
         modelContext.insert(CommunityPost(
             authorName: "나",
@@ -273,6 +314,14 @@ private struct CreateCommunityPostView: View {
         try? modelContext.save()
         dismiss()
     }
+
+    private func resetItemOrder() {
+        orderedItemIDs = selectedOutfit?.orderedItems.map(\.id) ?? []
+    }
+
+    private func moveItems(from source: IndexSet, to destination: Int) {
+        orderedItemIDs.move(fromOffsets: source, toOffset: destination)
+    }
 }
 
 private struct OutfitComposerPreview: View {
@@ -285,13 +334,7 @@ private struct OutfitComposerPreview: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                HStack(spacing: 4) {
-                    ForEach(outfit.items.compactMap(\.garment).prefix(4)) { garment in
-                        GarmentCutoutThumbnail(garment: garment)
-                    }
-                }
-                .padding(10)
-                .background(WEARyTheme.canvas)
+                ContentUnavailableView("착장 사진 없음", systemImage: "photo")
             }
         }
         .frame(maxWidth: .infinity)
@@ -304,8 +347,8 @@ private struct OutfitComposerPreview: View {
 struct CommunityLookArtwork: View {
     let post: CommunityPost
 
-    private var garments: [Garment] {
-        post.outfit?.items.compactMap(\.garment) ?? []
+    private var itemCount: Int {
+        post.outfit?.items.count ?? 0
     }
 
     var body: some View {
@@ -316,20 +359,23 @@ struct CommunityLookArtwork: View {
                 endPoint: .bottomTrailing
             )
             if let data = post.outfit?.photoData, let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityIdentifier("feed.outfitPhoto")
             } else {
-                VStack(spacing: -8) {
-                    ForEach(garments.prefix(5)) { garment in
-                        GarmentCutoutThumbnail(garment: garment)
-                            .frame(width: 145, height: 85)
-                    }
+                VStack(spacing: 12) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.system(size: 54, weight: .light))
+                    Text("착장 사진이 없어요")
+                        .font(.subheadline.weight(.semibold))
                 }
-                .padding(.vertical, 18)
+                .foregroundStyle(WEARyTheme.ink.opacity(0.7))
             }
             VStack {
                 Spacer()
                 HStack {
-                    Text("\(garments.count) ITEMS")
+                    Text("\(itemCount) ITEMS")
                         .font(.caption2.weight(.black)).tracking(1.2)
                         .padding(.horizontal, 10).padding(.vertical, 7)
                         .background(.ultraThinMaterial, in: Capsule())
@@ -372,13 +418,15 @@ private struct CommunityPostDetailView: View {
     private var outfitItems: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("이 룩의 아이템").font(.headline)
-            ForEach(post.outfit?.items.compactMap(\.garment) ?? []) { garment in
-                HStack(spacing: 12) {
-                    GarmentCutoutThumbnail(garment: garment).frame(width: 46, height: 46)
-                    VStack(alignment: .leading) {
-                        Text(garment.name).font(.subheadline.weight(.semibold))
-                        Text("\(garment.brand) · \(garment.size)")
-                            .font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
+            ForEach(post.outfit?.orderedItems ?? []) { item in
+                if let garment = item.garment {
+                    HStack(spacing: 12) {
+                        GarmentCutoutThumbnail(garment: garment).frame(width: 46, height: 46)
+                        VStack(alignment: .leading) {
+                            Text(garment.name).font(.subheadline.weight(.semibold))
+                            Text("\(garment.brand) · \(garment.size)")
+                                .font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
+                        }
                     }
                 }
             }

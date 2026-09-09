@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 
 enum GarmentCategory: String, CaseIterable, Codable, Identifiable {
+    case hat = "모자"
     case top = "상의"
     case bottom = "하의"
     case outer = "아우터"
@@ -14,6 +15,7 @@ enum GarmentCategory: String, CaseIterable, Codable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .hat: "hat.widebrim"
         case .top: "tshirt"
         case .bottom: "figure.stand.dress"
         case .outer: "jacket"
@@ -21,6 +23,19 @@ enum GarmentCategory: String, CaseIterable, Codable, Identifiable {
         case .shoes: "shoe"
         case .bag: "handbag"
         case .accessory: "sunglasses"
+        }
+    }
+
+    var outfitSortOrder: Int {
+        switch self {
+        case .hat: 0
+        case .outer: 1
+        case .top: 2
+        case .dress: 3
+        case .bottom: 4
+        case .shoes: 5
+        case .bag: 6
+        case .accessory: 7
         }
     }
 }

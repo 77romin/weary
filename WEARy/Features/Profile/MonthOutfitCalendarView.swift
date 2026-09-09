@@ -178,7 +178,7 @@ private struct OutfitMiniature: View {
     let outfit: Outfit
 
     private var garments: [Garment] {
-        Array(outfit.items.compactMap(\.garment).prefix(4))
+        Array(outfit.orderedItems.compactMap(\.garment).prefix(4))
     }
 
     var body: some View {
@@ -203,6 +203,7 @@ private struct DayOutfitDetailView: View {
     @State private var editingOutfit: Outfit?
     @State private var deletingOutfit: Outfit?
     @State private var operationError: String?
+    @State private var photoFacingOutfitIDs: Set<UUID> = []
 
     var body: some View {
         NavigationStack {
@@ -264,6 +265,22 @@ private struct DayOutfitDetailView: View {
     private func outfitCard(_ outfit: Outfit) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
+                Button {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        toggleCardFace(for: outfit)
+                    }
+                } label: {
+                    Image(systemName: isPhotoFacing(outfit) ? "list.bullet" : "photo.fill")
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 34, height: 34)
+                        .background(WEARyTheme.canvas, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(outfit.photoData == nil)
+                .opacity(outfit.photoData == nil ? 0.35 : 1)
+                .accessibilityLabel(isPhotoFacing(outfit) ? "아이템 목록 보기" : "실제 착장 사진 보기")
+                .accessibilityIdentifier("outfit.flip.\(outfit.id.uuidString)")
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(outfit.wornAt.formatted(date: .omitted, time: .shortened))
                         .font(.headline)
@@ -297,28 +314,84 @@ private struct DayOutfitDetailView: View {
                 .accessibilityIdentifier("outfit.manage")
             }
 
-            ForEach(outfit.items.compactMap(\.garment)) { garment in
-                NavigationLink(value: garment) {
-                    HStack(spacing: 12) {
-                        GarmentCutoutThumbnail(garment: garment)
-                            .frame(width: 54, height: 54)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(garment.name).font(.subheadline.weight(.semibold))
-                            Text("\(garment.brand) · \(garment.category.rawValue) · \(garment.size)")
-                                .font(.caption)
-                                .foregroundStyle(WEARyTheme.secondaryInk)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
+            ZStack {
+                outfitItemList(outfit)
+                    .opacity(isPhotoFacing(outfit) ? 0 : 1)
+                    .accessibilityHidden(isPhotoFacing(outfit))
+                    .rotation3DEffect(
+                        .degrees(isPhotoFacing(outfit) ? 180 : 0),
+                        axis: (x: 0, y: 1, z: 0)
+                    )
+
+                outfitPhoto(outfit)
+                    .opacity(isPhotoFacing(outfit) ? 1 : 0)
+                    .accessibilityHidden(!isPhotoFacing(outfit))
+                    .rotation3DEffect(
+                        .degrees(isPhotoFacing(outfit) ? 0 : -180),
+                        axis: (x: 0, y: 1, z: 0)
+                    )
             }
         }
         .padding(18)
         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: WEARyTheme.cornerRadius))
+    }
+
+    private func outfitItemList(_ outfit: Outfit) -> some View {
+        VStack(spacing: 12) {
+            ForEach(outfit.orderedItems) { item in
+                if let garment = item.garment {
+                    NavigationLink(value: garment) {
+                        HStack(spacing: 12) {
+                            GarmentCutoutThumbnail(garment: garment)
+                                .frame(width: 54, height: 54)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(garment.name).font(.subheadline.weight(.semibold))
+                                Text("\(garment.brand) · \(garment.category.rawValue) · \(garment.size)")
+                                    .font(.caption)
+                                    .foregroundStyle(WEARyTheme.secondaryInk)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("outfit.itemFace")
+    }
+
+    @ViewBuilder
+    private func outfitPhoto(_ outfit: Outfit) -> some View {
+        if let data = outfit.photoData, let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 360)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .clipped()
+                .accessibilityLabel("실제 촬영한 착장 사진")
+                .accessibilityIdentifier("outfit.photoFace")
+        } else {
+            ContentUnavailableView("촬영 사진이 없어요", systemImage: "photo")
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func isPhotoFacing(_ outfit: Outfit) -> Bool {
+        photoFacingOutfitIDs.contains(outfit.id)
+    }
+
+    private func toggleCardFace(for outfit: Outfit) {
+        if isPhotoFacing(outfit) {
+            photoFacingOutfitIDs.remove(outfit.id)
+        } else if outfit.photoData != nil {
+            photoFacingOutfitIDs.insert(outfit.id)
+        }
     }
 
     private var linkedPosts: [CommunityPost] {

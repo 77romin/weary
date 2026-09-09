@@ -83,6 +83,27 @@ struct OutfitFlowTests {
         #expect(post.comments == ["나: 멋진 룩이에요"])
     }
 
+    @Test("착장 아이템은 카테고리 기본 순서와 게시자 지정 순서를 따른다")
+    func outfitItemsSupportDefaultAndCustomOrder() {
+        let outfit = Outfit(wornAt: .now)
+        let shoes = Garment(name: "스니커즈", category: .shoes, colorName: "실버", colorHex: "CCCCCC")
+        let hat = Garment(name: "비니", category: .hat, colorName: "블랙", colorHex: "111111")
+        let bottom = Garment(name: "데님", category: .bottom, colorName: "블루", colorHex: "7392B7")
+        let outer = Garment(name: "재킷", category: .outer, colorName: "브라운", colorHex: "8D6748")
+        let items = [
+            OutfitItem(garment: shoes, outfit: outfit),
+            OutfitItem(garment: bottom, outfit: outfit),
+            OutfitItem(garment: hat, outfit: outfit),
+            OutfitItem(garment: outer, outfit: outfit),
+        ]
+        outfit.items = items
+
+        #expect(outfit.orderedItems.compactMap(\.garment?.category) == [.hat, .outer, .bottom, .shoes])
+
+        outfit.applyItemOrder([items[0].id, items[1].id, items[3].id, items[2].id])
+        #expect(outfit.orderedItems.compactMap(\.garment?.category) == [.shoes, .bottom, .outer, .hat])
+    }
+
     @Test("마켓 상태를 판매 중에서 예약 중으로 변경할 수 있다")
     func marketListingStatusUpdates() {
         let listing = MarketListing(
@@ -103,6 +124,9 @@ struct OutfitFlowTests {
             detailText: "직접 작성한 설명",
             price: 50_000,
             meetingPlace: "성수역 3번 출구",
+            meetingAddress: "서울 성동구 아차산로 18",
+            meetingLatitude: 37.54458,
+            meetingLongitude: 127.05596,
             chatCount: 3
         )
 
@@ -111,9 +135,29 @@ struct OutfitFlowTests {
 
         #expect(listing.isOwnedByCurrentUser)
         #expect(listing.displayedMeetingPlace == "성수역 3번 출구")
+        #expect(listing.hasPinnedMeetingPlace)
+        #expect(listing.meetingLatitude == 37.54458)
         #expect(listing.displayedChatCount == 3)
         #expect(listing.price == 45_000)
         #expect(listing.status == .sold)
+    }
+
+    @Test("판매 가격 변경은 직전 가격 대비 증감액을 보존한다")
+    func marketListingTracksPriceChange() {
+        let listing = MarketListing(
+            sellerName: "나의 WEARy",
+            title: "재킷",
+            detailText: "상세",
+            price: 50_000
+        )
+
+        listing.updatePrice(to: 56_000)
+        #expect(listing.previousPrice == 50_000)
+        #expect(listing.priceChange == 6_000)
+
+        listing.updatePrice(to: 49_000)
+        #expect(listing.previousPrice == 56_000)
+        #expect(listing.priceChange == -7_000)
     }
 
     @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")

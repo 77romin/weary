@@ -156,7 +156,7 @@ struct CaptureView: View {
                             .padding(.vertical, 10)
                     }
                     Button {
-                        photoData = nil
+                        photoData = UIImage(named: "DemoOutfitLeather")?.jpegData(compressionQuality: 0.84)
                         phase = .preview
                     } label: {
                         Text("샘플 사진으로 체험")
@@ -383,14 +383,20 @@ struct CaptureView: View {
     private func saveOutfit() {
         let outfit = Outfit(wornAt: wornAt, isPublished: publishToFeed, photoData: photoData)
         modelContext.insert(outfit)
-        for garmentID in selectedGarmentIDs {
-            guard let garment = garment(with: garmentID) else { continue }
-            let group = groups.first { $0.selectedGarmentID == garmentID }
+        let selectedGarments = selectedGarmentIDs
+            .compactMap(garment(with:))
+            .sorted {
+                if $0.category.outfitSortOrder == $1.category.outfitSortOrder { return $0.name < $1.name }
+                return $0.category.outfitSortOrder < $1.category.outfitSortOrder
+            }
+        for (index, selectedGarment) in selectedGarments.enumerated() {
+            let group = groups.first { $0.selectedGarmentID == selectedGarment.id }
             modelContext.insert(OutfitItem(
-                garment: garment,
+                garment: selectedGarment,
                 outfit: outfit,
                 source: group?.source ?? .manual,
-                confidence: group?.confidence ?? .none
+                confidence: group?.confidence ?? .none,
+                displayOrder: index
             ))
         }
         do {

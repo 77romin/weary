@@ -7,6 +7,7 @@ enum SampleDataSeeder {
         let garments = loadOrCreateGarments(in: context)
         applyDemoImagesIfNeeded(to: garments)
         let outfits = loadOrCreateOutfits(with: garments, in: context)
+        applyDemoOutfitPhotosIfNeeded(to: outfits)
         createCommunityPostsIfNeeded(outfits: outfits, in: context)
         expandCommunityPostsIfNeeded(outfits: outfits, in: context)
         createMarketListingsIfNeeded(garments: garments, in: context)
@@ -29,6 +30,21 @@ enum SampleDataSeeder {
             guard let assetName = assetsByName[garment.name],
                   let data = UIImage(named: assetName)?.pngData() else { continue }
             garment.cutoutImageData = data
+        }
+    }
+
+    private static func applyDemoOutfitPhotosIfNeeded(to outfits: [Outfit]) {
+        let assetsByNote = [
+            "월요일은 가볍고 선명하게.": "DemoOutfitLeather",
+            "레드 백으로 포인트를 준 출근 룩.": "DemoOutfitRedBag",
+            "자주 손이 가는 데님 조합.": "DemoOutfitCheck",
+            "블랙 드레스에 편한 스니커즈.": "DemoOutfitBlackDress",
+        ]
+
+        for outfit in outfits where outfit.photoData == nil {
+            guard let assetName = assetsByNote[outfit.note],
+                  let data = UIImage(named: assetName)?.jpegData(compressionQuality: 0.84) else { continue }
+            outfit.photoData = data
         }
     }
 
@@ -109,12 +125,13 @@ enum SampleDataSeeder {
             )
             context.insert(outfit)
             let selected = selectedGarments(at: index, from: garments)
-            selected.forEach {
+            selected.enumerated().forEach { itemIndex, garment in
                 context.insert(OutfitItem(
-                    garment: $0,
+                    garment: garment,
                     outfit: outfit,
                     source: index == 0 ? .ai : .manual,
-                    confidence: index == 0 ? .high : .none
+                    confidence: index == 0 ? .high : .none,
+                    displayOrder: itemIndex
                 ))
             }
             return outfit
@@ -228,15 +245,18 @@ enum SampleDataSeeder {
 
     private static func applyMarketDemoDetailsIfNeeded(in context: ModelContext) {
         let listings = (try? context.fetch(FetchDescriptor<MarketListing>())) ?? []
-        let defaults: [String: (place: String, chats: Int)] = [
-            "블랙 니트 드레스": ("성수역 3번 출구", 3),
-            "빈티지 레더 재킷": ("한남동 주민센터 앞", 5),
-            "레드 미니 백": ("연남동 경의선숲길 입구", 2),
-            "실버 러너 스니커즈": ("성수역 개찰구", 4),
+        let defaults: [String: (place: String, address: String, latitude: Double, longitude: Double, chats: Int)] = [
+            "블랙 니트 드레스": ("성수역 3번 출구", "서울 성동구 아차산로 18", 37.54458, 127.05596, 3),
+            "빈티지 레더 재킷": ("한남동 주민센터 앞", "서울 용산구 대사관로5길 1", 37.53454, 127.00004, 5),
+            "레드 미니 백": ("연남동 경의선숲길 입구", "서울 마포구 동교로 190", 37.56155, 126.92463, 2),
+            "실버 러너 스니커즈": ("성수역 개찰구", "서울 성동구 아차산로 100", 37.54458, 127.05596, 4),
         ]
         for listing in listings {
             guard let values = defaults[listing.title] else { continue }
             if listing.meetingPlace == nil { listing.meetingPlace = values.place }
+            if listing.meetingAddress == nil { listing.meetingAddress = values.address }
+            if listing.meetingLatitude == nil { listing.meetingLatitude = values.latitude }
+            if listing.meetingLongitude == nil { listing.meetingLongitude = values.longitude }
             if listing.chatCount == nil { listing.chatCount = values.chats }
         }
     }

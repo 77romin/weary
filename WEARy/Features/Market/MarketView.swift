@@ -111,7 +111,6 @@ private struct MarketListingDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var listing: MarketListing
     @State private var showingChat = false
-    @State private var showingRequestConfirmation = false
     @State private var showingEditor = false
     @State private var showingDeleteConfirmation = false
 
@@ -130,19 +129,35 @@ private struct MarketListingDetailView: View {
                             .font(.caption.weight(.bold)).padding(8)
                             .background(WEARyTheme.lime, in: Capsule())
                     }
-                    Text(listing.price.formatted(.currency(code: "KRW").precision(.fractionLength(0))))
-                        .font(.title.bold())
+                    HStack(spacing: 10) {
+                        Text(listing.price.formatted(.currency(code: "KRW").precision(.fractionLength(0))))
+                            .font(.title.bold())
+                        if let priceChange = listing.priceChange {
+                            Text(priceChangeText(priceChange))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(priceChange > 0 ? Color.red : Color.blue)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.yellow.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                                .accessibilityLabel("가격 변동 \(priceChangeText(priceChange))원")
+                                .accessibilityIdentifier("market.priceChange")
+                        }
+                    }
                     HStack(spacing: 8) {
                         detailPill("사이즈", listing.size)
                         detailPill("상태", listing.condition.rawValue)
                         if let count = listing.garment?.wearCount { detailPill("착용", "\(count)회") }
                     }
                     Text(listing.detailText).font(.body).foregroundStyle(WEARyTheme.secondaryInk)
-                    Label(listing.displayedMeetingPlace, systemImage: "mappin.and.ellipse")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                    if let meetingPlace = listing.meetingPlaceSelection {
+                        MeetingPlaceMapCard(selection: meetingPlace)
+                    } else {
+                        Label(listing.displayedMeetingPlace, systemImage: "mappin.and.ellipse")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                    }
                     if let garment = listing.garment {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("옷장 데이터 인증").font(.headline)
@@ -169,7 +184,7 @@ private struct MarketListingDetailView: View {
                         Button {
                             showingEditor = true
                         } label: {
-                            Label("매물 수정", systemImage: "pencil")
+                            Label("수정", systemImage: "pencil")
                         }
                         Button(role: .destructive) {
                             showingDeleteConfirmation = true
@@ -191,9 +206,6 @@ private struct MarketListingDetailView: View {
             }
         }
         .sheet(isPresented: $showingEditor) { EditListingView(listing: listing) }
-        .alert("구매를 요청했어요", isPresented: $showingRequestConfirmation) {
-            Button("확인", role: .cancel) { }
-        } message: { Text("판매자가 확인하면 채팅으로 알려드릴게요.") }
         .confirmationDialog("이 매물을 삭제할까요?", isPresented: $showingDeleteConfirmation) {
             Button("삭제", role: .destructive) { deleteListing() }
             Button("취소", role: .cancel) { }
@@ -230,21 +242,33 @@ private struct MarketListingDetailView: View {
 
     private var buyerActions: some View {
         HStack(spacing: 10) {
-            Button { showingChat = true } label: {
-                Label("채팅 \(listing.displayedChatCount)", systemImage: "bubble.left.and.bubble.right")
-                    .frame(maxWidth: .infinity)
+            Button {
+                listing.isLiked.toggle()
+                try? modelContext.save()
+            } label: {
+                Image(systemName: listing.isLiked ? "heart.fill" : "heart")
+                    .foregroundStyle(listing.isLiked ? WEARyTheme.coral : WEARyTheme.ink)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.bordered)
+            .accessibilityLabel(listing.isLiked ? "관심 해제" : "관심")
+            .accessibilityIdentifier("market.buyerLike")
+
             Button {
-                listing.status = .reserved
-                try? modelContext.save()
-                showingRequestConfirmation = true
+                showingChat = true
             } label: {
-                Text("구매 요청").frame(maxWidth: .infinity)
+                Label("채팅하기", systemImage: "bubble.left.and.bubble.right.fill")
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent).tint(WEARyTheme.ink)
-            .disabled(listing.status != .active)
+            .buttonStyle(.borderedProminent)
+            .tint(WEARyTheme.ink)
+            .accessibilityIdentifier("market.buyerChat")
         }
+    }
+
+    private func priceChangeText(_ change: Int) -> String {
+        let sign = change > 0 ? "+" : "-"
+        return "\(sign)\(abs(change).formatted())"
     }
 
     private func deleteListing() {
@@ -273,6 +297,10 @@ struct CreateListingView: View {
     @State private var detailText: String
     @State private var price: String
     @State private var meetingPlace = ""
+    @State private var meetingAddress = ""
+    @State private var meetingLatitude: Double?
+    @State private var meetingLongitude: Double?
+    @State private var showingPlacePicker = false
     @State private var condition: ListingCondition = .excellent
 
     init(garment: Garment) {
@@ -301,7 +329,7 @@ struct CreateListingView: View {
                 }
                 TextField("상품 설명을 직접 작성해 주세요", text: $detailText, axis: .vertical)
                     .lineLimit(4...8)
-                TextField("만날 장소 (예: 성수역 3번 출구)", text: $meetingPlace)
+                meetingPlaceButton
             } header: {
                 Text("판매 정보")
             } footer: {
@@ -321,6 +349,48 @@ struct CreateListingView: View {
                     .disabled(title.isEmpty || Int(price) == nil)
             }
         }
+        .sheet(isPresented: $showingPlacePicker) {
+            MeetingPlacePickerView(initialSelection: selectedMeetingPlace, onSelect: applyMeetingPlace)
+        }
+    }
+
+    private var meetingPlaceButton: some View {
+        Button {
+            showingPlacePicker = true
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(meetingPlace.isEmpty ? "지도에서 만날 장소 선택" : meetingPlace)
+                        .foregroundStyle(WEARyTheme.ink)
+                    if !meetingAddress.isEmpty {
+                        Text(meetingAddress)
+                            .font(.caption)
+                            .foregroundStyle(WEARyTheme.secondaryInk)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                Image(systemName: "map")
+            }
+        }
+        .accessibilityIdentifier("market.createPlace")
+    }
+
+    private var selectedMeetingPlace: MeetingPlaceSelection? {
+        guard let meetingLatitude, let meetingLongitude else { return nil }
+        return MeetingPlaceSelection(
+            name: meetingPlace,
+            address: meetingAddress,
+            latitude: meetingLatitude,
+            longitude: meetingLongitude
+        )
+    }
+
+    private func applyMeetingPlace(_ selection: MeetingPlaceSelection) {
+        meetingPlace = selection.name
+        meetingAddress = selection.address
+        meetingLatitude = selection.latitude
+        meetingLongitude = selection.longitude
     }
 
     private func save() {
@@ -328,7 +398,9 @@ struct CreateListingView: View {
             sellerName: "나의 WEARy", title: title, detailText: detailText,
             price: Int(price) ?? 0, originalPrice: garment.purchasePrice,
             size: garment.size, condition: condition, accentHex: garment.colorHex,
-            meetingPlace: meetingPlace, chatCount: 0, garment: garment
+            meetingPlace: meetingPlace, meetingAddress: meetingAddress,
+            meetingLatitude: meetingLatitude, meetingLongitude: meetingLongitude,
+            chatCount: 0, garment: garment
         ))
         garment.status = .selling
         try? modelContext.save()
@@ -342,30 +414,27 @@ private struct EditListingView: View {
     let listing: MarketListing
     @State private var title: String
     @State private var detailText: String
-    @State private var adjustedPrice: Int
+    @State private var priceText: String
     @State private var meetingPlace: String
+    @State private var meetingAddress: String
+    @State private var meetingLatitude: Double?
+    @State private var meetingLongitude: Double?
+    @State private var showingPlacePicker = false
     @State private var condition: ListingCondition
+    @State private var status: ListingStatus
     @State private var showingSoldConfirmation = false
 
     init(listing: MarketListing) {
         self.listing = listing
         _title = State(initialValue: listing.title)
         _detailText = State(initialValue: listing.detailText)
-        _adjustedPrice = State(initialValue: listing.price)
+        _priceText = State(initialValue: String(listing.price))
         _meetingPlace = State(initialValue: listing.meetingPlace ?? "")
+        _meetingAddress = State(initialValue: listing.meetingAddress ?? "")
+        _meetingLatitude = State(initialValue: listing.meetingLatitude)
+        _meetingLongitude = State(initialValue: listing.meetingLongitude)
         _condition = State(initialValue: listing.condition)
-    }
-
-    private var priceOptions: [Int] {
-        let roundedPrice = max(1_000, (listing.price / 1_000) * 1_000)
-        let lowerBound = max(1_000, roundedPrice - 100_000)
-        let upperBound = min(3_000_000, roundedPrice + 100_000)
-        var options = Array(stride(from: lowerBound, through: upperBound, by: 1_000))
-        if !options.contains(listing.price) {
-            options.append(listing.price)
-            options.sort()
-        }
-        return options
+        _status = State(initialValue: listing.status)
     }
 
     var body: some View {
@@ -376,24 +445,22 @@ private struct EditListingView: View {
                     Picker("상품 상태", selection: $condition) {
                         ForEach(ListingCondition.allCases) { Text($0.rawValue).tag($0) }
                     }
+                    Picker("거래 상태", selection: $status) {
+                        ForEach(ListingStatus.allCases) { Text($0.rawValue).tag($0) }
+                    }
                     TextField("상품 설명", text: $detailText, axis: .vertical)
                         .lineLimit(4...8)
-                    TextField("만날 장소", text: $meetingPlace)
+                    meetingPlaceButton
                 }
 
                 Section {
-                    Picker("판매 가격", selection: $adjustedPrice) {
-                        ForEach(priceOptions, id: \.self) { price in
-                            Text("\(price.formatted())원").tag(price)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                    .frame(height: 140)
-                    .accessibilityIdentifier("market.priceWheel")
+                    TextField("판매 가격", text: $priceText)
+                        .keyboardType(.numberPad)
+                        .accessibilityIdentifier("market.priceInput")
                 } header: {
                     Text("가격 조정")
                 } footer: {
-                    Text("기존 가격 \(listing.price.formatted())원 · 위아래로 스크롤해 새 가격을 선택하세요.")
+                    Text("현재 가격 \(listing.price.formatted())원 · 변경하면 직전 가격과의 차이를 표시해요.")
                 }
 
                 Section {
@@ -412,7 +479,7 @@ private struct EditListingView: View {
             }
             .scrollContentBackground(.hidden)
             .background(WEARyTheme.canvas)
-            .navigationTitle("매물 수정")
+            .navigationTitle("수정")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -421,7 +488,10 @@ private struct EditListingView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("저장", action: save)
                         .fontWeight(.bold)
-                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(
+                            title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                            (Int(priceText) ?? 0) <= 0
+                        )
                         .accessibilityIdentifier("market.saveEdit")
                 }
             }
@@ -431,15 +501,63 @@ private struct EditListingView: View {
             } message: {
                 Text("마켓에서 판매 완료 상태로 표시됩니다.")
             }
+            .sheet(isPresented: $showingPlacePicker) {
+                MeetingPlacePickerView(initialSelection: selectedMeetingPlace, onSelect: applyMeetingPlace)
+            }
         }
     }
 
+    private var meetingPlaceButton: some View {
+        Button {
+            showingPlacePicker = true
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(meetingPlace.isEmpty ? "지도에서 만날 장소 선택" : meetingPlace)
+                        .foregroundStyle(WEARyTheme.ink)
+                    if !meetingAddress.isEmpty {
+                        Text(meetingAddress)
+                            .font(.caption)
+                            .foregroundStyle(WEARyTheme.secondaryInk)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                Image(systemName: "map")
+            }
+        }
+        .accessibilityIdentifier("market.editPlace")
+    }
+
+    private var selectedMeetingPlace: MeetingPlaceSelection? {
+        guard let meetingLatitude, let meetingLongitude else { return nil }
+        return MeetingPlaceSelection(
+            name: meetingPlace,
+            address: meetingAddress,
+            latitude: meetingLatitude,
+            longitude: meetingLongitude
+        )
+    }
+
+    private func applyMeetingPlace(_ selection: MeetingPlaceSelection) {
+        meetingPlace = selection.name
+        meetingAddress = selection.address
+        meetingLatitude = selection.latitude
+        meetingLongitude = selection.longitude
+    }
+
     private func save() {
+        guard let newPrice = Int(priceText), newPrice > 0 else { return }
         listing.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        listing.price = adjustedPrice
+        listing.updatePrice(to: newPrice)
         listing.condition = condition
+        listing.status = status
+        listing.garment?.status = status == .sold ? .sold : .selling
         listing.detailText = detailText.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.meetingPlace = meetingPlace.trimmingCharacters(in: .whitespacesAndNewlines)
+        listing.meetingAddress = meetingAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        listing.meetingLatitude = meetingLatitude
+        listing.meetingLongitude = meetingLongitude
         try? modelContext.save()
         dismiss()
     }

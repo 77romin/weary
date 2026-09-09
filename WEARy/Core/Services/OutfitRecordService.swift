@@ -29,6 +29,13 @@ enum OutfitRecordService {
 
         let selectedIDs = Set(uniqueGarments.keys)
         let existingIDs = Set(outfit.items.compactMap(\.garment?.id))
+        let orderedGarments = uniqueGarments.values.sorted {
+            if $0.category.outfitSortOrder == $1.category.outfitSortOrder { return $0.name < $1.name }
+            return $0.category.outfitSortOrder < $1.category.outfitSortOrder
+        }
+        let orderByGarmentID = Dictionary(
+            uniqueKeysWithValues: orderedGarments.enumerated().map { ($0.element.id, $0.offset) }
+        )
 
         outfit.items
             .filter { item in
@@ -42,8 +49,14 @@ enum OutfitRecordService {
                 garment: garment,
                 outfit: outfit,
                 source: .manual,
-                confidence: .none
+                confidence: .none,
+                displayOrder: orderByGarmentID[garment.id]
             ))
+        }
+
+        for item in outfit.items {
+            guard let garmentID = item.garment?.id else { continue }
+            item.displayOrder = orderByGarmentID[garmentID]
         }
 
         outfit.wornAt = wornAt

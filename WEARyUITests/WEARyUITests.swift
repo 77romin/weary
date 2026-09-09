@@ -40,10 +40,20 @@ final class WEARyUITests: XCTestCase {
         app.tabBars.buttons["피드"].tap()
         XCTAssertTrue(app.navigationBars["!WEARy"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["서연"].waitForExistence(timeout: 3))
+        XCTAssertGreaterThan(
+            app.descendants(matching: .any).matching(identifier: "feed.outfitPhoto").count,
+            0
+        )
+        app.staticTexts["서연"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["이 룩의 아이템"].waitForExistence(timeout: 3))
 
         app.tabBars.buttons["마켓"].tap()
         XCTAssertTrue(app.navigationBars["마켓"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["옷장에서 다음 옷장으로"].waitForExistence(timeout: 3))
+        app.staticTexts["빈티지 레더 재킷"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["market.buyerLike"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["market.buyerChat"].exists)
+        XCTAssertFalse(app.buttons["구매 요청"].exists)
     }
 
     func testOwnedMarketListingProvidesSellerManagement() throws {
@@ -58,15 +68,20 @@ final class WEARyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["market.adjustPrice"].exists)
         XCTAssertFalse(app.buttons["market.markSold"].exists)
         XCTAssertTrue(app.staticTexts["성수역 3번 출구"].exists)
+        XCTAssertTrue(app.otherElements["market.meetingMap"].exists)
 
         app.buttons["market.ownerMenu"].tap()
-        app.buttons["매물 수정"].tap()
-        XCTAssertTrue(app.navigationBars["매물 수정"].waitForExistence(timeout: 3))
+        app.buttons["수정"].tap()
+        XCTAssertTrue(app.navigationBars["수정"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["market.saveEdit"].exists)
-        XCTAssertGreaterThan(
-            app.descendants(matching: .any).matching(identifier: "market.priceWheel").count,
-            0
-        )
+        XCTAssertTrue(app.textFields["market.priceInput"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "market.priceWheel").count, 0)
+        XCTAssertTrue(app.buttons["market.editPlace"].exists)
+        app.buttons["market.editPlace"].tap()
+        XCTAssertTrue(app.navigationBars["만날 장소"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["market.placeQuery"].exists)
+        XCTAssertTrue(app.otherElements["market.placeMap"].exists)
+        app.buttons["취소"].tap()
         app.swipeUp()
         XCTAssertTrue(app.buttons["market.editMarkSold"].waitForExistence(timeout: 3))
     }
@@ -96,6 +111,31 @@ final class WEARyUITests: XCTestCase {
             app.descendants(matching: .any).matching(identifier: "social.user.seoyeon.daily").count,
             0
         )
+    }
+
+    func testMyCalendarCardFlipsBetweenItemsAndPhoto() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["MY"].tap()
+
+        let today = app.buttons["calendar.today"]
+        XCTAssertTrue(today.waitForExistence(timeout: 3))
+        for _ in 0..<5 where !today.isHittable { app.swipeUp() }
+        XCTAssertTrue(today.isHittable)
+        today.tap()
+
+        let flipButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "outfit.flip.")
+        ).firstMatch
+        XCTAssertTrue(flipButton.waitForExistence(timeout: 3))
+        let itemFace = app.descendants(matching: .any).matching(identifier: "outfit.itemFace").firstMatch
+        let photoFace = app.descendants(matching: .any).matching(identifier: "outfit.photoFace").firstMatch
+        XCTAssertTrue(itemFace.exists)
+
+        flipButton.tap()
+        XCTAssertTrue(photoFace.waitForExistence(timeout: 3))
+        flipButton.tap()
+        XCTAssertTrue(itemFace.waitForExistence(timeout: 3))
     }
 
     func testUnavailableCameraShowsPhotoFallbackGuidance() throws {
