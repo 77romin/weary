@@ -69,19 +69,31 @@ final class WEARyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["market.markSold"].exists)
         XCTAssertTrue(app.staticTexts["성수역 3번 출구"].exists)
         XCTAssertTrue(app.otherElements["market.meetingMap"].exists)
+        XCTAssertGreaterThan(
+            app.descendants(matching: .any).matching(identifier: "market.photoGallery").count,
+            0
+        )
+        XCTAssertGreaterThan(
+            app.descendants(matching: .any).matching(identifier: "market.verifiedBadge").count,
+            0
+        )
 
         app.buttons["market.ownerMenu"].tap()
         app.buttons["수정"].tap()
         XCTAssertTrue(app.navigationBars["수정"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["market.saveEdit"].exists)
-        XCTAssertTrue(app.textFields["market.priceInput"].exists)
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "market.priceWheel").count, 0)
+        XCTAssertTrue(app.buttons["market.addPhotos"].exists)
+        XCTAssertTrue(app.switches["market.editVerification"].exists)
+        for _ in 0..<4 where !app.buttons["market.editPlace"].exists { app.swipeUp() }
         XCTAssertTrue(app.buttons["market.editPlace"].exists)
         app.buttons["market.editPlace"].tap()
         XCTAssertTrue(app.navigationBars["만날 장소"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.textFields["market.placeQuery"].exists)
         XCTAssertTrue(app.otherElements["market.placeMap"].exists)
         app.navigationBars["만날 장소"].buttons["취소"].tap()
+        for _ in 0..<4 where !app.textFields["market.priceInput"].exists { app.swipeUp() }
+        XCTAssertTrue(app.textFields["market.priceInput"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "market.priceWheel").count, 0)
         app.swipeUp()
         XCTAssertTrue(app.buttons["market.editMarkSold"].waitForExistence(timeout: 3))
     }

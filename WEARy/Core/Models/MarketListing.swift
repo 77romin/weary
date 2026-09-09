@@ -37,6 +37,8 @@ final class MarketListing {
     var meetingLatitude: Double?
     var meetingLongitude: Double?
     var chatCount: Int?
+    @Attribute(.externalStorage) var galleryData: Data?
+    var wardrobeVerificationVisible: Bool?
     var garment: Garment?
 
     init(
@@ -58,6 +60,8 @@ final class MarketListing {
         meetingLatitude: Double? = nil,
         meetingLongitude: Double? = nil,
         chatCount: Int? = nil,
+        galleryImages: [Data] = [],
+        showsWardrobeVerification: Bool = false,
         garment: Garment? = nil
     ) {
         self.id = id
@@ -78,6 +82,8 @@ final class MarketListing {
         self.meetingLatitude = meetingLatitude
         self.meetingLongitude = meetingLongitude
         self.chatCount = chatCount
+        galleryData = try? PropertyListEncoder().encode(galleryImages)
+        wardrobeVerificationVisible = showsWardrobeVerification
         self.garment = garment
     }
 
@@ -106,6 +112,20 @@ final class MarketListing {
 
     var hasPinnedMeetingPlace: Bool {
         meetingLatitude != nil && meetingLongitude != nil
+    }
+
+    var galleryImages: [Data] {
+        guard let galleryData else { return [] }
+        return (try? PropertyListDecoder().decode([Data].self, from: galleryData)) ?? []
+    }
+
+    var showsWardrobeVerification: Bool {
+        get { wardrobeVerificationVisible ?? false }
+        set { wardrobeVerificationVisible = newValue }
+    }
+
+    func updateGalleryImages(_ images: [Data]) {
+        galleryData = try? PropertyListEncoder().encode(images)
     }
 
     var priceChange: Int? {

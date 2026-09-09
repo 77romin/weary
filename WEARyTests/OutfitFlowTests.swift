@@ -160,6 +160,29 @@ struct OutfitFlowTests {
         #expect(listing.priceChange == -7_000)
     }
 
+    @Test("판매 사진과 옷장 데이터 인증 공개 여부를 저장한다")
+    func marketListingStoresGalleryAndVerificationChoice() {
+        let firstImage = Data([0x01, 0x02])
+        let secondImage = Data([0x03, 0x04])
+        let listing = MarketListing(
+            sellerName: "나의 WEARy",
+            title: "재킷",
+            detailText: "상세",
+            price: 50_000,
+            galleryImages: [firstImage],
+            showsWardrobeVerification: true
+        )
+
+        #expect(listing.galleryImages == [firstImage])
+        #expect(listing.showsWardrobeVerification)
+
+        listing.updateGalleryImages([firstImage, secondImage])
+        listing.showsWardrobeVerification = false
+
+        #expect(listing.galleryImages == [firstImage, secondImage])
+        #expect(!listing.showsWardrobeVerification)
+    }
+
     @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")
     func reviewCandidatesRespectStatusAndThreshold() {
         let now = Date(timeIntervalSince1970: 2_000_000_000)

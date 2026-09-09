@@ -90,12 +90,19 @@ private struct MarketListingCard: View {
 
 private struct MarketArtwork: View {
     let listing: MarketListing
+    var usesGalleryCover = true
 
     var body: some View {
         ZStack {
             Color(hex: listing.accentHex).opacity(0.78)
             Circle().fill(.white.opacity(0.18)).frame(width: 170).offset(x: 55, y: -55)
-            if let garment = listing.garment {
+            if usesGalleryCover,
+               let data = listing.galleryImages.first,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if let garment = listing.garment {
                 GarmentCutoutThumbnail(garment: garment)
                     .frame(width: 135, height: 150).padding(12)
             } else {
@@ -103,6 +110,31 @@ private struct MarketArtwork: View {
             }
         }
         .clipped()
+    }
+}
+
+private struct MarketListingGallery: View {
+    let listing: MarketListing
+
+    var body: some View {
+        TabView {
+            MarketArtwork(listing: listing, usesGalleryCover: false)
+                .accessibilityLabel("기본 옷 사진")
+
+            ForEach(Array(listing.galleryImages.enumerated()), id: \.offset) { index, data in
+                if let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .clipped()
+                        .accessibilityLabel("판매 사진 \(index + 1)")
+                }
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: listing.galleryImages.isEmpty ? .never : .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .background(Color(hex: listing.accentHex).opacity(0.78))
+        .accessibilityIdentifier("market.photoGallery")
     }
 }
 
@@ -117,12 +149,21 @@ private struct MarketListingDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                MarketArtwork(listing: listing).frame(height: 410).clipped()
+                MarketListingGallery(listing: listing).frame(height: 410).clipped()
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(listing.sellerName).font(.caption.weight(.bold)).foregroundStyle(WEARyTheme.coral)
-                            Text(listing.title).font(.title2.bold())
+                            HStack(spacing: 7) {
+                                Text(listing.title).font(.title2.bold())
+                                if listing.showsWardrobeVerification, listing.garment != nil {
+                                    Image(systemName: "star.fill")
+                                        .font(.title3.weight(.bold))
+                                        .foregroundStyle(Color(red: 0.88, green: 0.64, blue: 0.08))
+                                        .accessibilityLabel("옷장 데이터 인증")
+                                        .accessibilityIdentifier("market.verifiedBadge")
+                                }
+                            }
                         }
                         Spacer()
                         Text(listing.status.rawValue)
@@ -158,7 +199,7 @@ private struct MarketListingDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                     }
-                    if let garment = listing.garment {
+                    if listing.showsWardrobeVerification, let garment = listing.garment {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("옷장 데이터 인증").font(.headline)
                             Text("구매가 \(garment.purchasePrice?.formatted() ?? "미입력")원 · 마지막 착용 \(garment.lastWornAt?.formatted(date: .abbreviated, time: .omitted) ?? "기록 없음")")
@@ -302,6 +343,8 @@ struct CreateListingView: View {
     @State private var meetingLongitude: Double?
     @State private var showingPlacePicker = false
     @State private var condition: ListingCondition = .excellent
+    @State private var galleryImages: [Data] = []
+    @State private var showsWardrobeVerification = false
 
     init(garment: Garment) {
         self.garment = garment
@@ -321,6 +364,9 @@ struct CreateListingView: View {
                     }
                 }
             }
+            Section("판매 사진") {
+                MarketPhotoEditorView(images: $galleryImages)
+            }
             Section {
                 TextField("상품명", text: $title)
                 TextField("판매 가격", text: $price).keyboardType(.numberPad)
@@ -330,6 +376,8 @@ struct CreateListingView: View {
                 TextField("상품 설명을 직접 작성해 주세요", text: $detailText, axis: .vertical)
                     .lineLimit(4...8)
                 meetingPlaceButton
+                Toggle("옷장 데이터 인증 공개", isOn: $showsWardrobeVerification)
+                    .accessibilityIdentifier("market.createVerification")
             } header: {
                 Text("판매 정보")
             } footer: {
@@ -400,7 +448,8 @@ struct CreateListingView: View {
             size: garment.size, condition: condition, accentHex: garment.colorHex,
             meetingPlace: meetingPlace, meetingAddress: meetingAddress,
             meetingLatitude: meetingLatitude, meetingLongitude: meetingLongitude,
-            chatCount: 0, garment: garment
+            chatCount: 0, galleryImages: galleryImages,
+            showsWardrobeVerification: showsWardrobeVerification, garment: garment
         ))
         garment.status = .selling
         try? modelContext.save()
@@ -422,6 +471,8 @@ private struct EditListingView: View {
     @State private var showingPlacePicker = false
     @State private var condition: ListingCondition
     @State private var status: ListingStatus
+    @State private var galleryImages: [Data]
+    @State private var showsWardrobeVerification: Bool
     @State private var showingSoldConfirmation = false
 
     init(listing: MarketListing) {
@@ -435,11 +486,16 @@ private struct EditListingView: View {
         _meetingLongitude = State(initialValue: listing.meetingLongitude)
         _condition = State(initialValue: listing.condition)
         _status = State(initialValue: listing.status)
+        _galleryImages = State(initialValue: listing.galleryImages)
+        _showsWardrobeVerification = State(initialValue: listing.showsWardrobeVerification)
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("판매 사진") {
+                    MarketPhotoEditorView(images: $galleryImages)
+                }
                 Section("판매 정보") {
                     TextField("상품명", text: $title)
                     Picker("상품 상태", selection: $condition) {
@@ -451,6 +507,8 @@ private struct EditListingView: View {
                     TextField("상품 설명", text: $detailText, axis: .vertical)
                         .lineLimit(4...8)
                     meetingPlaceButton
+                    Toggle("옷장 데이터 인증 공개", isOn: $showsWardrobeVerification)
+                        .accessibilityIdentifier("market.editVerification")
                 }
 
                 Section {
@@ -558,6 +616,8 @@ private struct EditListingView: View {
         listing.meetingAddress = meetingAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.meetingLatitude = meetingLatitude
         listing.meetingLongitude = meetingLongitude
+        listing.updateGalleryImages(galleryImages)
+        listing.showsWardrobeVerification = showsWardrobeVerification
         try? modelContext.save()
         dismiss()
     }

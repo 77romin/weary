@@ -225,7 +225,8 @@ enum SampleDataSeeder {
             MarketListing(
                 sellerName: "나의 WEARy", title: "블랙 니트 드레스", detailText: "구매 후 몇 번 입지 않아 판매해요. 착용 기록과 사이즈를 확인해 주세요.",
                 price: 72_000, originalPrice: blackDress?.purchasePrice, size: blackDress?.size ?? "S",
-                condition: .excellent, accentHex: "464646", garment: blackDress
+                condition: .excellent, accentHex: "464646",
+                showsWardrobeVerification: true, garment: blackDress
             ),
             MarketListing(
                 sellerName: "한남동 옷장", title: "빈티지 레더 재킷", detailText: "부드러운 브라운 컬러의 빈티지 레더 재킷이에요.",
@@ -258,6 +259,15 @@ enum SampleDataSeeder {
             if listing.meetingLatitude == nil { listing.meetingLatitude = values.latitude }
             if listing.meetingLongitude == nil { listing.meetingLongitude = values.longitude }
             if listing.chatCount == nil { listing.chatCount = values.chats }
+            if listing.title == "블랙 니트 드레스" {
+                if listing.wardrobeVerificationVisible == nil {
+                    listing.showsWardrobeVerification = true
+                }
+                if listing.galleryImages.isEmpty,
+                   let data = UIImage(named: "DemoOutfitBlackDress")?.jpegData(compressionQuality: 0.84) {
+                    listing.updateGalleryImages([data])
+                }
+            }
         }
     }
 }
