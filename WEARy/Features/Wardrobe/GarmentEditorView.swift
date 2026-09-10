@@ -26,8 +26,6 @@ struct GarmentEditorView: View {
     @State private var season: String
     @State private var status: GarmentStatus
     @State private var hasPurchaseDate: Bool
-    @State private var keepAdding = false
-    @State private var showingSavedConfirmation = false
     @State private var saveError: String?
 
     init(garment: Garment? = nil) {
@@ -51,14 +49,6 @@ struct GarmentEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if garment == nil {
-                    Section {
-                        Toggle("저장 후 다음 옷 등록", isOn: $keepAdding)
-                    } footer: {
-                        Text("구매 정보가 없어도 옷을 등록할 수 있어요.")
-                    }
-                }
-
                 Section("옷 사진") {
                     GarmentPhotoPreview(
                         imageData: cutoutImageData ?? imageData,
@@ -213,11 +203,6 @@ struct GarmentEditorView: View {
             } message: {
                 Text(cameraMessage ?? "")
             }
-            .alert("옷을 저장했어요", isPresented: $showingSavedConfirmation) {
-                Button("다음 옷 등록", role: .cancel) { }
-            } message: {
-                Text("사진과 기본 정보를 이어서 입력해 주세요.")
-            }
         }
     }
 
@@ -256,12 +241,7 @@ struct GarmentEditorView: View {
 
         do {
             try modelContext.save()
-            if garment == nil && keepAdding {
-                resetForNextGarment()
-                showingSavedConfirmation = true
-            } else {
-                dismiss()
-            }
+            dismiss()
         } catch {
             saveError = "저장하지 못했어요. 다시 시도해 주세요."
         }
@@ -292,28 +272,6 @@ struct GarmentEditorView: View {
         }
     }
 
-    private func resetForNextGarment() {
-        selectedPhoto = nil
-        imageData = nil
-        cutoutImageData = nil
-        showingCamera = false
-        showingPhotoLibrary = false
-        cameraMessage = nil
-        isGeneratingCutout = false
-        didAttemptCutout = false
-        name = ""
-        brand = ""
-        category = .top
-        colorName = "블랙"
-        colorHex = "343434"
-        purchaseDate = .now
-        purchasePrice = ""
-        size = ""
-        hasPurchaseDate = false
-        season = "사계절"
-        status = .active
-        saveError = nil
-    }
 }
 
 private struct GarmentPhotoPreview: View {
