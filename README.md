@@ -128,6 +128,7 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 상세한 제품 정의와 설계 원칙은 [PRODUCT_CONCEPT.md](./PRODUCT_CONCEPT.md)에서 확인할 수 있습니다.
 발표 순서와 복구 방법은 [DEMO_GUIDE.md](./DEMO_GUIDE.md)에서 확인할 수 있습니다.
 개인 iCloud와 공용 서버의 데이터 경계 및 ERD는 [DATA_ARCHITECTURE.md](./DATA_ARCHITECTURE.md)에서 확인할 수 있습니다.
+최종 Release 빌드와 검증 결과는 [FINAL_BUILD_REPORT.md](./FINAL_BUILD_REPORT.md)에서 확인할 수 있습니다.
 
 ## 구현 원칙
 
@@ -266,8 +267,8 @@ xcodebuild -project WEARy.xcodeproj \
 - [x] 오프라인 환경에서 동작하도록 로컬 Mock 유지
 - [x] 모든 프로토타입 기능 동결
 - [x] 최종 실제 iPhone 전체 흐름 검증
-- [ ] 프로토타입 최종 빌드 및 결과 정리
-- [ ] 모든 기능 완료 후 백업용 화면 녹화 제작
+- [x] 프로토타입 최종 Release 빌드 및 결과 정리
+- [x] 발표 방식 결정에 따라 백업용 화면 녹화 생략
 
 ### 프로토타입 이후
 
