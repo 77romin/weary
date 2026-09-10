@@ -22,6 +22,7 @@ final class WEARyUITests: XCTestCase {
 
         let analyzeButton = app.buttons["capture.analyze"]
         XCTAssertTrue(analyzeButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["capture.reset"].isHittable)
         analyzeButton.tap()
 
         let saveButton = app.buttons["capture.save"]
@@ -209,6 +210,7 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["새 옷 등록"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts["빠른 등록"].exists)
         XCTAssertFalse(app.staticTexts["새로 산 옷"].exists)
+        XCTAssertFalse(app.switches["저장 후 다음 옷 등록"].exists)
 
         app.buttons["garment.camera"].tap()
         XCTAssertTrue(app.alerts["카메라를 열 수 없어요"].waitForExistence(timeout: 3))
