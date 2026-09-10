@@ -45,9 +45,9 @@ struct CaptureView: View {
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar(phase == .ready && cameraReadiness == .ready ? .hidden : .visible, for: .navigationBar)
+            .toolbar(shouldHideNavigationBar ? .hidden : .visible, for: .navigationBar)
             .toolbar {
-                if phase != .ready && phase != .saved {
+                if phase != .ready && phase != .preview && phase != .saved {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("처음부터") { reset() }
                             .foregroundStyle(.white)
@@ -91,6 +91,10 @@ struct CaptureView: View {
         case .saved: "기록 완료"
         default: "착장 기록"
         }
+    }
+
+    private var shouldHideNavigationBar: Bool {
+        phase == .preview || (phase == .ready && cameraReadiness == .ready)
     }
 
     private var readyView: some View {
@@ -176,22 +180,13 @@ struct CaptureView: View {
     }
 
     private var previewView: some View {
-        VStack(spacing: 0) {
-            OutfitPhotoPreview(photoData: photoData).frame(maxHeight: .infinity)
-            VStack(spacing: 16) {
-                DatePicker("착용 날짜", selection: $wornAt)
-                    .datePickerStyle(.compact)
-                    .colorScheme(.dark)
-                Button {
-                    Task { await analyze() }
-                } label: {
-                    Label("내 옷장에서 찾기", systemImage: "sparkles")
-                        .primaryCaptureButtonStyle()
-                }
-                .accessibilityIdentifier("capture.analyze")
-            }
-            .padding(22)
-        }
+        CapturedOutfitPreview(
+            photoData: photoData,
+            wornAt: $wornAt,
+            onReset: reset,
+            onAnalyze: { Task { await analyze() } }
+        )
+        .ignoresSafeArea(edges: .top)
     }
 
     private var analyzingView: some View {
@@ -487,6 +482,83 @@ private struct OutfitPhotoPreview: View {
             }
         }
         .clipped()
+    }
+}
+
+private struct CapturedOutfitPreview: View {
+    let photoData: Data?
+    @Binding var wornAt: Date
+    let onReset: () -> Void
+    let onAnalyze: () -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let photoData, let image = UIImage(data: photoData) {
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+
+                    LinearGradient(
+                        colors: [.black.opacity(0.58), .clear, .black.opacity(0.7)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+
+                    VStack(spacing: 0) {
+                        HStack {
+                            Button(action: onReset) {
+                                Label("처음부터", systemImage: "arrow.counterclockwise")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .lightTextOutline()
+                                    .padding(.horizontal, 14)
+                                    .frame(minHeight: 46)
+                                    .background(.black.opacity(0.46), in: Capsule())
+                            }
+                            .accessibilityIdentifier("capture.reset")
+                            Spacer()
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, max(deviceSafeAreaTop, 20) + 10)
+
+                        Spacer()
+
+                        VStack(spacing: 14) {
+                            DatePicker("착용 날짜", selection: $wornAt)
+                                .datePickerStyle(.compact)
+                                .colorScheme(.dark)
+                                .foregroundStyle(.white)
+                                .lightTextOutline()
+                            Button(action: onAnalyze) {
+                                Label("내 옷장에서 찾기", systemImage: "sparkles")
+                                    .primaryCaptureButtonStyle()
+                            }
+                            .accessibilityIdentifier("capture.analyze")
+                        }
+                        .padding(18)
+                        .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 24))
+                        .padding(14)
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+            } else {
+                ContentUnavailableView("사진을 불러올 수 없어요", systemImage: "photo.badge.exclamationmark")
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private var deviceSafeAreaTop: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top ?? 0
     }
 }
 

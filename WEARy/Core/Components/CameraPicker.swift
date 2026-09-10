@@ -147,11 +147,9 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
         } else {
             deviceTypes = [.builtInTrueDepthCamera, .builtInWideAngleCamera]
         }
-        return AVCaptureDevice.DiscoverySession(
-            deviceTypes: deviceTypes,
-            mediaType: .video,
-            position: position
-        ).devices.first
+        return deviceTypes.lazy.compactMap {
+            AVCaptureDevice.default($0, for: .video, position: position)
+        }.first
     }
 
     private func configureControls() {
@@ -276,9 +274,10 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
         let factor = min(max(rawFactor, device.minAvailableVideoZoomFactor), device.maxAvailableVideoZoomFactor)
         do {
             try device.lockForConfiguration()
-            device.ramp(toVideoZoomFactor: factor, withRate: 8)
+            device.cancelVideoZoomRamp()
+            device.videoZoomFactor = factor
             device.unlockForConfiguration()
-            updateZoomButtons(selectedLevel: displayFactor)
+            updateZoomButtons(selectedLevel: factor * device.displayVideoZoomFactorMultiplier)
         } catch {
             onFailure("카메라 줌을 변경하지 못했어요.")
         }
@@ -287,11 +286,19 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
     private func updateZoomButtons(selectedLevel: CGFloat) {
         for (index, button) in zoomButtons.enumerated() {
             var configuration = button.configuration
-            let isSelected = zoomLevels[index] == selectedLevel
+            let level = zoomLevels[index]
+            let multiplier = videoInput?.device.displayVideoZoomFactorMultiplier ?? 1
+            let rawFactor = level / multiplier
+            let minimum = videoInput?.device.minAvailableVideoZoomFactor ?? 1
+            let maximum = videoInput?.device.maxAvailableVideoZoomFactor ?? 1
+            let isAvailable = rawFactor >= minimum - 0.001 && rawFactor <= maximum + 0.001
+            let isSelected = abs(level - selectedLevel) < 0.01
             configuration?.baseForegroundColor = isSelected ? .black : .white
             configuration?.baseBackgroundColor = isSelected ? UIColor(WEARyTheme.lime) : .clear
             configuration?.background.cornerRadius = 16
             button.configuration = configuration
+            button.isEnabled = isAvailable
+            button.alpha = isAvailable ? 1 : 0.35
         }
     }
 
