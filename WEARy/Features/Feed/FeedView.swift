@@ -6,7 +6,6 @@ struct FeedView: View {
     @Query(sort: \CommunityPost.createdAt, order: .reverse) private var posts: [CommunityPost]
     @State private var selectedTopic = "전체"
     @State private var showingComposer = false
-    @State private var isAtFeedTop = true
     @State private var isRefreshing = false
     @State private var refreshCount = 0
 
@@ -37,15 +36,6 @@ struct FeedView: View {
 
                             LazyVStack(spacing: 18) {
                                 styleTopics
-                                if isRefreshing {
-                                    ProgressView()
-                                        .controlSize(.regular)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 6)
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
-                                        .accessibilityLabel("피드 최신화 중")
-                                        .accessibilityIdentifier("feed.refreshIndicator")
-                                }
                                 if filteredPosts.isEmpty {
                                     ContentUnavailableView(
                                         "아직 \(selectedTopic) 게시물이 없어요",
@@ -64,11 +54,10 @@ struct FeedView: View {
                             }
                             .padding(18)
                         }
-                        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                            geometry.contentOffset.y
-                        } action: { _, offset in
-                            isAtFeedTop = offset <= 2
+                        .refreshable {
+                            await refreshFeed()
                         }
+                        .accessibilityIdentifier("feed.scrollView")
                     }
                 }
                 .navigationTitle("!WEARy")
@@ -84,7 +73,7 @@ struct FeedView: View {
                             .foregroundStyle(WEARyTheme.ink)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(isRefreshing ? "피드 최신화 중" : "피드 처음으로")
+                        .accessibilityLabel("피드 최상단으로 이동")
                         .accessibilityValue("새로고침 \(refreshCount)회")
                         .accessibilityIdentifier("feed.logo")
                     }
@@ -110,25 +99,19 @@ struct FeedView: View {
     }
 
     private func handleLogoTap(using proxy: ScrollViewProxy) {
-        let shouldRefresh = isAtFeedTop
         withAnimation(.easeOut(duration: 0.38)) {
             proxy.scrollTo(feedTopAnchor, anchor: .top)
         }
-        isAtFeedTop = true
-        if shouldRefresh {
-            refreshFeed()
-        }
     }
 
-    private func refreshFeed() {
+    @MainActor
+    private func refreshFeed() async {
         guard !isRefreshing else { return }
         isRefreshing = true
         refreshCount += 1
-        Task { @MainActor in
-            SampleDataSeeder.seedIfNeeded(in: modelContext)
-            try? await Task.sleep(for: .milliseconds(650))
-            isRefreshing = false
-        }
+        SampleDataSeeder.seedIfNeeded(in: modelContext)
+        try? await Task.sleep(for: .milliseconds(650))
+        isRefreshing = false
     }
 
     private var styleTopics: some View {

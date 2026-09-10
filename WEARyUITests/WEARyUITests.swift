@@ -57,7 +57,7 @@ final class WEARyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["구매 요청"].exists)
     }
 
-    func testFeedLogoScrollsToTopThenRefreshes() throws {
+    func testFeedLogoScrollsToTopAndPullGestureRefreshes() throws {
         continueAfterFailure = false
         let app = launchApp()
         let logo = app.buttons["feed.logo"]
@@ -75,6 +75,13 @@ final class WEARyUITests: XCTestCase {
         XCTAssertEqual(logo.value as? String, "새로고침 0회")
 
         logo.tap()
+        XCTAssertEqual(logo.value as? String, "새로고침 0회")
+
+        let feedScrollView = app.scrollViews["feed.scrollView"]
+        XCTAssertTrue(feedScrollView.waitForExistence(timeout: 2))
+        let pullStart = feedScrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+        let pullEnd = feedScrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+        pullStart.press(forDuration: 0.1, thenDragTo: pullEnd)
         let didRefresh = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "새로고침 1회"),
             object: logo
