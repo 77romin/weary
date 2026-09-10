@@ -309,9 +309,14 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
 
     private func capturePhoto() {
         guard session.isRunning,
-              photoOutput.connection(with: .video)?.isEnabled == true else {
+              let connection = photoOutput.connection(with: .video),
+              connection.isEnabled else {
             onFailure("카메라가 아직 준비 중이에요. 잠시 후 다시 촬영해 주세요.")
             return
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = cameraPosition == .front
         }
         let settings = AVCapturePhotoSettings()
         settings.photoQualityPrioritization = photoOutput.maxPhotoQualityPrioritization
