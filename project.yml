@@ -9,6 +9,10 @@ configs:
   Debug: debug
   CloudKitDebug: debug
   Release: release
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    from: 2.0.0
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -18,6 +22,10 @@ targets:
   WEARy:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Config/Supabase.xcconfig
+      CloudKitDebug: Config/Supabase.xcconfig
+      Release: Config/Supabase.xcconfig
     sources:
       - path: WEARy
         excludes:
@@ -29,13 +37,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.weary.prototype
         PRODUCT_NAME: WEARy
-        INFOPLIST_KEY_CFBundleDisplayName: WEARy
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: 착장과 옷 사진을 등록하기 위해 사진 보관함 접근이 필요합니다.
-        INFOPLIST_KEY_NSCameraUsageDescription: 오늘의 착장과 옷을 촬영하기 위해 카메라 접근이 필요합니다.
-        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Config/WEARy-Info.plist
+        GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"
@@ -44,11 +47,12 @@ targets:
       configs:
         CloudKitDebug:
           CODE_SIGN_ENTITLEMENTS: WEARy/WEARy.entitlements
-          INFOPLIST_KEY_UIBackgroundModes: remote-notification
     scheme:
       testTargets:
         - WEARyTests
         - WEARyUITests
+    dependencies:
+      - package: Supabase
   WEARyTests:
     type: bundle.unit-test
     platform: iOS

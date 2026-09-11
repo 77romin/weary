@@ -54,6 +54,9 @@ private struct AppEntryView: View {
         }
         .task {
             guard isPreparingApp else { return }
+            Task {
+                await SupabaseSessionManager.shared.bootstrap()
+            }
             SampleDataSeeder.seedIfNeeded(in: modelContext)
             if !isUITesting {
                 try? await Task.sleep(for: .milliseconds(900))
