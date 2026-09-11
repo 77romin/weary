@@ -279,6 +279,9 @@ xcodebuild -project WEARy.xcodeproj \
 - [x] 개인 옷장 및 커뮤니티·마켓 논리 ERD 작성
 - [x] 공개 전환과 동기화 충돌 정책 초안 작성
 - [ ] CloudKit 개발 컨테이너와 entitlement 구성
+  - [x] `CloudKitDebug` 구성에 iCloud entitlement와 원격 알림 Background Mode 반영
+  - [x] 개인 개발용 `Debug` 구성을 분리해 기존 iPhone 실행 경로 유지
+  - [ ] 유료 Apple Developer 팀 연결 후 `iCloud.com.weary.prototype` 컨테이너 등록
 - [ ] SwiftData 모델의 CloudKit 호환성 검증 및 마이그레이션
   - [x] 커뮤니티·마켓이 개인 객체 대신 게시 시점 스냅샷을 읽도록 전환
   - [x] 기존 게시물·매물의 스냅샷 자동 백필 1단계 실행

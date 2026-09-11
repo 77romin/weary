@@ -4,6 +4,11 @@ options:
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
+  defaultConfig: Debug
+configs:
+  Debug: debug
+  CloudKitDebug: debug
+  Release: release
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -17,6 +22,7 @@ targets:
       - path: WEARy
         excludes:
           - Resources
+          - WEARy.entitlements
       - path: WEARy/Resources
         buildPhase: resources
     settings:
@@ -35,6 +41,10 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+      configs:
+        CloudKitDebug:
+          CODE_SIGN_ENTITLEMENTS: WEARy/WEARy.entitlements
+          INFOPLIST_KEY_UIBackgroundModes: remote-notification
     scheme:
       testTargets:
         - WEARyTests
@@ -63,3 +73,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.weary.prototype.uitests
         GENERATE_INFOPLIST_FILE: YES
+schemes:
+  WEARy-CloudKit:
+    build:
+      targets:
+        WEARy: all
+    run:
+      config: CloudKitDebug
+    test:
+      config: CloudKitDebug
+      targets:
+        - WEARyTests
+        - WEARyUITests
