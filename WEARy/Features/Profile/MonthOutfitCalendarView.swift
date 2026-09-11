@@ -396,7 +396,7 @@ private struct DayOutfitDetailView: View {
 
     private var linkedPosts: [CommunityPost] {
         guard let outfitID = deletingOutfit?.id else { return [] }
-        return posts.filter { $0.outfit?.id == outfitID }
+        return posts.filter { $0.sourceOutfitID == outfitID }
     }
 
     private var deleteMessage: String {

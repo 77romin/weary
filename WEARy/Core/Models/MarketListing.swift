@@ -39,7 +39,14 @@ final class MarketListing {
     var chatCount: Int?
     @Attribute(.externalStorage) var galleryData: Data?
     var wardrobeVerificationVisible: Bool?
-    var garment: Garment?
+    var sourceGarmentID: UUID?
+    var garmentNameSnapshot: String?
+    var garmentCategoryRawSnapshot: String?
+    var garmentColorHexSnapshot: String?
+    @Attribute(.externalStorage) var garmentCutoutImageDataSnapshot: Data?
+    var verificationPurchasePrice: Int?
+    var verificationLastWornAt: Date?
+    var verificationWearCount: Int?
 
     init(
         id: UUID = UUID(),
@@ -84,7 +91,7 @@ final class MarketListing {
         self.chatCount = chatCount
         galleryData = try? PropertyListEncoder().encode(galleryImages)
         wardrobeVerificationVisible = showsWardrobeVerification
-        self.garment = garment
+        captureSnapshot(from: garment)
     }
 
     var condition: ListingCondition {
@@ -137,5 +144,34 @@ final class MarketListing {
         guard newPrice > 0, newPrice != price else { return }
         previousPrice = price
         price = newPrice
+    }
+
+    var hasWardrobeSnapshot: Bool {
+        sourceGarmentID != nil
+    }
+
+    var garmentCategorySnapshot: GarmentCategory {
+        GarmentCategory(rawValue: garmentCategoryRawSnapshot ?? "") ?? .top
+    }
+
+    func captureSnapshot(from garment: Garment?) {
+        guard let garment else { return }
+        sourceGarmentID = garment.id
+        garmentNameSnapshot = garment.name
+        garmentCategoryRawSnapshot = garment.categoryRaw
+        garmentColorHexSnapshot = garment.colorHex
+        garmentCutoutImageDataSnapshot = garment.cutoutImageData
+        verificationPurchasePrice = garment.purchasePrice
+        verificationLastWornAt = garment.lastWornAt
+        verificationWearCount = garment.wearCount
+    }
+
+    func sourceGarment(in context: ModelContext) -> Garment? {
+        guard let sourceGarmentID else { return nil }
+        var descriptor = FetchDescriptor<Garment>(
+            predicate: #Predicate { $0.id == sourceGarmentID }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 }

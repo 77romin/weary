@@ -399,7 +399,7 @@ struct CommunityLookArtwork: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            if let data = post.outfit?.photoData, let image = UIImage(data: data) {
+            if let data = post.outfitPhotoData, let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -448,15 +448,13 @@ private struct CommunityPostDetailView: View {
     private var outfitItems: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("이 룩의 아이템").font(.headline)
-            ForEach(post.outfit?.orderedItems ?? []) { item in
-                if let garment = item.garment {
-                    HStack(spacing: 12) {
-                        GarmentCutoutThumbnail(garment: garment).frame(width: 46, height: 46)
-                        VStack(alignment: .leading) {
-                            Text(garment.name).font(.subheadline.weight(.semibold))
-                            Text("\(garment.brand) · \(garment.size)")
-                                .font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
-                        }
+            ForEach(post.outfitItems) { garment in
+                HStack(spacing: 12) {
+                    CommunityGarmentSnapshotThumbnail(garment: garment).frame(width: 46, height: 46)
+                    VStack(alignment: .leading) {
+                        Text(garment.name).font(.subheadline.weight(.semibold))
+                        Text("\(garment.brand) · \(garment.size)")
+                            .font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
                     }
                 }
             }
@@ -485,5 +483,26 @@ private struct CommunityPostDetailView: View {
                 .disabled(newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+    }
+}
+
+private struct CommunityGarmentSnapshotThumbnail: View {
+    let garment: CommunityGarmentSnapshot
+
+    var body: some View {
+        Group {
+            if let data = garment.cutoutImageData, let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                Image(systemName: garment.category.symbol)
+                    .resizable()
+                    .scaledToFit()
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(WEARyTheme.ink.opacity(0.82))
+                    .padding(3)
+                    .background(Color(hex: garment.colorHex).opacity(0.66), in: RoundedRectangle(cornerRadius: 5))
+            }
+        }
+        .accessibilityLabel(garment.name)
     }
 }

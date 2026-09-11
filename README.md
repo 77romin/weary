@@ -280,6 +280,11 @@ xcodebuild -project WEARy.xcodeproj \
 - [x] 공개 전환과 동기화 충돌 정책 초안 작성
 - [ ] CloudKit 개발 컨테이너와 entitlement 구성
 - [ ] SwiftData 모델의 CloudKit 호환성 검증 및 마이그레이션
+  - [x] 커뮤니티·마켓이 개인 객체 대신 게시 시점 스냅샷을 읽도록 전환
+  - [x] 기존 게시물·매물의 스냅샷 자동 백필 1단계 실행
+  - [x] 레거시 교차 관계 제거 및 UUID 기반 개인 옷 상태 연결
+  - [ ] 개인 CloudKit 저장소와 서비스 Mock 저장소 분리
+  - [ ] CloudKit 제약에 맞춰 개인 모델의 unique·기본값·관계 검증
 - [x] 커뮤니티 서버 기술 스택을 Supabase로 결정
 - [x] 첫 서버 범위를 커뮤니티 우선으로 결정
 - [ ] Supabase 개발 프로젝트와 로컬 개발 환경 구성

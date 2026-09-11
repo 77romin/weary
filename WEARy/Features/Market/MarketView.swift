@@ -102,11 +102,15 @@ private struct MarketArtwork: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-            } else if let garment = listing.garment {
-                GarmentCutoutThumbnail(garment: garment)
+            } else if let data = listing.garmentCutoutImageDataSnapshot,
+                      let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
                     .frame(width: 135, height: 150).padding(12)
             } else {
-                Image(systemName: "hanger").font(.system(size: 54, weight: .light))
+                Image(systemName: listing.hasWardrobeSnapshot ? listing.garmentCategorySnapshot.symbol : "hanger")
+                    .font(.system(size: 54, weight: .light))
             }
         }
         .clipped()
@@ -156,7 +160,7 @@ private struct MarketListingDetailView: View {
                             Text(listing.sellerName).font(.caption.weight(.bold)).foregroundStyle(WEARyTheme.coral)
                             HStack(spacing: 7) {
                                 Text(listing.title).font(.title2.bold())
-                                if listing.showsWardrobeVerification, listing.garment != nil {
+                                if listing.showsWardrobeVerification, listing.hasWardrobeSnapshot {
                                     Image(systemName: "star.fill")
                                         .font(.title3.weight(.bold))
                                         .foregroundStyle(Color(red: 0.88, green: 0.64, blue: 0.08))
@@ -187,7 +191,7 @@ private struct MarketListingDetailView: View {
                     HStack(spacing: 8) {
                         detailPill("사이즈", listing.size)
                         detailPill("상태", listing.condition.rawValue)
-                        if let count = listing.garment?.wearCount { detailPill("착용", "\(count)회") }
+                        if let count = listing.verificationWearCount { detailPill("착용", "\(count)회") }
                     }
                     Text(listing.detailText).font(.body).foregroundStyle(WEARyTheme.secondaryInk)
                     if let meetingPlace = listing.meetingPlaceSelection {
@@ -199,10 +203,10 @@ private struct MarketListingDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                     }
-                    if listing.showsWardrobeVerification, let garment = listing.garment {
+                    if listing.showsWardrobeVerification, listing.hasWardrobeSnapshot {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("옷장 데이터 인증").font(.headline)
-                            Text("구매가 \(garment.purchasePrice?.formatted() ?? "미입력")원 · 마지막 착용 \(garment.lastWornAt?.formatted(date: .abbreviated, time: .omitted) ?? "기록 없음")")
+                            Text("구매가 \(listing.verificationPurchasePrice?.formatted() ?? "미입력")원 · 마지막 착용 \(listing.verificationLastWornAt?.formatted(date: .abbreviated, time: .omitted) ?? "기록 없음")")
                                 .font(.subheadline).foregroundStyle(WEARyTheme.secondaryInk)
                         }
                         .padding(16).background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -313,8 +317,8 @@ private struct MarketListingDetailView: View {
     }
 
     private func deleteListing() {
-        if listing.garment?.status == .selling {
-            listing.garment?.status = .active
+        if let garment = listing.sourceGarment(in: modelContext), garment.status == .selling {
+            garment.status = .active
         }
         modelContext.delete(listing)
         try? modelContext.save()
@@ -610,7 +614,7 @@ private struct EditListingView: View {
         listing.updatePrice(to: newPrice)
         listing.condition = condition
         listing.status = status
-        listing.garment?.status = status == .sold ? .sold : .selling
+        listing.sourceGarment(in: modelContext)?.status = status == .sold ? .sold : .selling
         listing.detailText = detailText.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.meetingPlace = meetingPlace.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.meetingAddress = meetingAddress.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -624,7 +628,7 @@ private struct EditListingView: View {
 
     private func markAsSold() {
         listing.status = .sold
-        listing.garment?.status = .sold
+        listing.sourceGarment(in: modelContext)?.status = .sold
         try? modelContext.save()
         dismiss()
     }

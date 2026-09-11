@@ -404,12 +404,18 @@ sequenceDiagram
 
 ### 단계 A — 개인 iCloud 동기화
 
-1. Apple Developer에서 iCloud와 CloudKit capability를 구성한다.
-2. 개발·운영 CloudKit 컨테이너를 구분한다.
-3. SwiftData 모델을 CloudKit 호환 스키마로 마이그레이션한다.
-4. 메타데이터부터 두 기기 동기화와 재설치 복원을 검증한다.
-5. 옷 및 착장 이미지의 업로드 용량과 속도를 측정한다.
-6. 동기화 중·실패·iCloud 미로그인 UI를 구현한다.
+1. 커뮤니티·마켓 모델이 개인 객체를 직접 참조하지 않도록 게시 시점 스냅샷으로 전환한다.
+   - 2026-09-12: 새 스냅샷 필드와 기존 데이터 자동 백필을 적용했다.
+   - 실제 iPhone에서 백필 앱을 실행한 뒤 임시 레거시 관계를 제거했다.
+2. 개인 CloudKit 저장소와 로컬 서비스 Mock 저장소를 분리한다.
+3. Apple Developer에서 iCloud와 CloudKit capability를 구성한다.
+4. 개발·운영 CloudKit 컨테이너를 구분한다.
+5. SwiftData 개인 모델을 CloudKit 호환 스키마로 마이그레이션한다.
+   - UUID의 `@Attribute(.unique)` 제거와 앱 수준 중복 방지를 검증한다.
+   - 필수 속성의 기본값과 optional 관계를 검증한다.
+6. 메타데이터부터 두 기기 동기화와 재설치 복원을 검증한다.
+7. 옷 및 착장 이미지의 업로드 용량과 속도를 측정한다.
+8. 동기화 중·실패·iCloud 미로그인 UI를 구현한다.
 
 ### 단계 B — 커뮤니티 서버 최소 기능
 

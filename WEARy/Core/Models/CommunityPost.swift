@@ -1,6 +1,30 @@
 import Foundation
 import SwiftData
 
+struct CommunityGarmentSnapshot: Codable, Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let brand: String
+    let size: String
+    let categoryRaw: String
+    let colorHex: String
+    let cutoutImageData: Data?
+
+    init(garment: Garment) {
+        id = garment.id
+        name = garment.name
+        brand = garment.brand
+        size = garment.size
+        categoryRaw = garment.categoryRaw
+        colorHex = garment.colorHex
+        cutoutImageData = garment.cutoutImageData
+    }
+
+    var category: GarmentCategory {
+        GarmentCategory(rawValue: categoryRaw) ?? .top
+    }
+}
+
 @Model
 final class CommunityPost {
     @Attribute(.unique) var id: UUID
@@ -16,7 +40,10 @@ final class CommunityPost {
     var isSaved: Bool
     var isFollowing: Bool
     var accentHex: String
-    var outfit: Outfit?
+    var sourceOutfitID: UUID?
+    var outfitWornAt: Date?
+    @Attribute(.externalStorage) var outfitPhotoData: Data?
+    @Attribute(.externalStorage) var outfitItemsData: Data?
 
     init(
         id: UUID = UUID(),
@@ -47,7 +74,7 @@ final class CommunityPost {
         self.isSaved = isSaved
         self.isFollowing = isFollowing
         self.accentHex = accentHex
-        self.outfit = outfit
+        captureSnapshot(from: outfit)
     }
 
     var tags: [String] {
@@ -63,5 +90,19 @@ final class CommunityPost {
         let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         commentsRaw = commentsRaw.isEmpty ? trimmed : commentsRaw + "\n" + trimmed
+    }
+
+    var outfitItems: [CommunityGarmentSnapshot] {
+        guard let outfitItemsData else { return [] }
+        return (try? PropertyListDecoder().decode([CommunityGarmentSnapshot].self, from: outfitItemsData)) ?? []
+    }
+
+    func captureSnapshot(from outfit: Outfit?) {
+        guard let outfit else { return }
+        sourceOutfitID = outfit.id
+        outfitWornAt = outfit.wornAt
+        outfitPhotoData = outfit.photoData
+        let snapshots = outfit.orderedItems.compactMap(\.garment).map(CommunityGarmentSnapshot.init)
+        outfitItemsData = try? PropertyListEncoder().encode(snapshots)
     }
 }

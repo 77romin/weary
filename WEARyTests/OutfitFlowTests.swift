@@ -109,6 +109,31 @@ struct OutfitFlowTests {
         #expect(post.comments == ["나: 멋진 룩이에요"])
     }
 
+    @Test("커뮤니티 게시물은 개인 착장 대신 게시 시점 스냅샷을 보존한다")
+    func communityPostCapturesOutfitSnapshot() {
+        let photo = Data([0x01, 0x02])
+        let cutout = Data([0x03, 0x04])
+        let garment = Garment(
+            name: "레더 재킷", brand: "WEARY", category: .outer,
+            colorName: "브라운", colorHex: "8D6748", size: "M",
+            cutoutImageData: cutout
+        )
+        let outfit = Outfit(wornAt: Date(timeIntervalSince1970: 100), photoData: photo)
+        outfit.items = [OutfitItem(garment: garment, outfit: outfit, displayOrder: 0)]
+
+        let post = CommunityPost(
+            authorName: "나", authorHandle: "my.weary", authorInitials: "ME",
+            caption: "오늘의 룩", outfit: outfit
+        )
+        garment.name = "이름 변경"
+        outfit.photoData = Data([0xFF])
+
+        #expect(post.sourceOutfitID == outfit.id)
+        #expect(post.outfitPhotoData == photo)
+        #expect(post.outfitItems.map(\.name) == ["레더 재킷"])
+        #expect(post.outfitItems.first?.cutoutImageData == cutout)
+    }
+
     @Test("착장 아이템은 카테고리 기본 순서와 게시자 지정 순서를 따른다")
     func outfitItemsSupportDefaultAndCustomOrder() {
         let outfit = Outfit(wornAt: .now)
@@ -207,6 +232,29 @@ struct OutfitFlowTests {
 
         #expect(listing.galleryImages == [firstImage, secondImage])
         #expect(!listing.showsWardrobeVerification)
+    }
+
+    @Test("마켓 매물은 공개를 선택한 옷장 데이터를 게시 시점 스냅샷으로 보존한다")
+    func marketListingCapturesWardrobeSnapshot() {
+        let cutout = Data([0x01, 0x02])
+        let garment = Garment(
+            name: "니트", category: .top, colorName: "블랙", colorHex: "111111",
+            purchasePrice: 90_000, size: "M", cutoutImageData: cutout
+        )
+        let outfit = Outfit(wornAt: Date(timeIntervalSince1970: 200))
+        garment.outfitItems = [OutfitItem(garment: garment, outfit: outfit)]
+
+        let listing = MarketListing(
+            sellerName: "나의 WEARy", title: "니트", detailText: "상세",
+            price: 45_000, showsWardrobeVerification: true, garment: garment
+        )
+        garment.purchasePrice = 100_000
+
+        #expect(listing.sourceGarmentID == garment.id)
+        #expect(listing.garmentNameSnapshot == "니트")
+        #expect(listing.garmentCutoutImageDataSnapshot == cutout)
+        #expect(listing.verificationPurchasePrice == 90_000)
+        #expect(listing.verificationWearCount == 1)
     }
 
     @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")
