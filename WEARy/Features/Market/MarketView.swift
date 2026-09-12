@@ -46,7 +46,7 @@ struct MarketView: View {
                 MarketListingDetailView(listing: listing)
             }
             .sheet(isPresented: $showingSellFlow) { SellGarmentPicker() }
-            .task { await syncRemoteMarket() }
+            .task { await runRemoteMarket() }
         }
     }
 
@@ -67,11 +67,36 @@ struct MarketView: View {
 #endif
         }
     }
+
+    private func runRemoteMarket() async {
+        await syncRemoteMarket()
+        guard !Task.isCancelled else { return }
+
+        do {
+            let events = try await SupabaseMarketRealtimeRepository.shared.events()
+            for await _ in events {
+                guard !Task.isCancelled else { break }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { break }
+                await syncRemoteMarket()
+            }
+        } catch {
+#if DEBUG
+            if !Task.isCancelled {
+                print("마켓 Realtime 구독 실패: \(error.localizedDescription)")
+            }
+#endif
+        }
+
+        await SupabaseMarketRealtimeRepository.shared.stop()
+    }
 }
 
 private struct MarketListingCard: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var listing: MarketListing
+    @State private var isUpdatingFavorite = false
+    @State private var interactionError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -86,13 +111,13 @@ private struct MarketListingCard: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     Button {
-                        listing.isLiked.toggle()
-                        try? modelContext.save()
+                        toggleFavorite()
                     } label: {
                         Image(systemName: listing.isLiked ? "heart.fill" : "heart")
                             .foregroundStyle(listing.isLiked ? WEARyTheme.coral : WEARyTheme.ink)
                             .padding(9).background(.ultraThinMaterial, in: Circle())
                     }
+                    .disabled(isUpdatingFavorite)
                     .padding(8)
                 }
             Text(listing.title).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -106,6 +131,35 @@ private struct MarketListingCard: View {
         }
         .padding(10)
         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 22))
+        .alert("관심 처리 실패", isPresented: errorPresentation($interactionError)) {
+            Button("확인", role: .cancel) { }
+        } message: {
+            Text(interactionError ?? "다시 시도해 주세요.")
+        }
+    }
+
+    private func toggleFavorite() {
+        guard !isUpdatingFavorite else { return }
+        let previousValue = listing.isLiked
+        let desiredValue = !previousValue
+        listing.isLiked = desiredValue
+        try? modelContext.save()
+
+        guard listing.isSyncedFromServer == true else { return }
+        isUpdatingFavorite = true
+        Task { @MainActor in
+            do {
+                try await SupabaseMarketInteractionRepository.shared.setFavorite(
+                    listingID: listing.id,
+                    isFavorite: desiredValue
+                )
+            } catch {
+                listing.isLiked = previousValue
+                try? modelContext.save()
+                interactionError = error.localizedDescription
+            }
+            isUpdatingFavorite = false
+        }
     }
 }
 
@@ -171,6 +225,7 @@ private struct MarketListingDetailView: View {
     @State private var showingEditor = false
     @State private var showingDeleteConfirmation = false
     @State private var mutationError: String?
+    @State private var isUpdatingFavorite = false
 
     var body: some View {
         ScrollView {
@@ -279,7 +334,7 @@ private struct MarketListingDetailView: View {
         } message: {
             Text("마켓 게시물만 삭제되고 옷은 내 옷장에 남습니다.")
         }
-        .alert("매물 삭제 실패", isPresented: errorPresentation($mutationError)) {
+        .alert("요청 처리 실패", isPresented: errorPresentation($mutationError)) {
             Button("확인", role: .cancel) { }
         } message: { Text(mutationError ?? "다시 시도해 주세요.") }
     }
@@ -287,14 +342,14 @@ private struct MarketListingDetailView: View {
     private var ownerActions: some View {
         HStack(spacing: 10) {
             Button {
-                listing.isLiked.toggle()
-                try? modelContext.save()
+                toggleFavorite()
             } label: {
                 Image(systemName: listing.isLiked ? "heart.fill" : "heart")
                     .foregroundStyle(listing.isLiked ? WEARyTheme.coral : WEARyTheme.ink)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.bordered)
+            .disabled(isUpdatingFavorite)
             .accessibilityLabel(listing.isLiked ? "관심 해제" : "관심")
             .accessibilityIdentifier("market.ownerLike")
 
@@ -313,14 +368,14 @@ private struct MarketListingDetailView: View {
     private var buyerActions: some View {
         HStack(spacing: 10) {
             Button {
-                listing.isLiked.toggle()
-                try? modelContext.save()
+                toggleFavorite()
             } label: {
                 Image(systemName: listing.isLiked ? "heart.fill" : "heart")
                     .foregroundStyle(listing.isLiked ? WEARyTheme.coral : WEARyTheme.ink)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.bordered)
+            .disabled(isUpdatingFavorite)
             .accessibilityLabel(listing.isLiked ? "관심 해제" : "관심")
             .accessibilityIdentifier("market.buyerLike")
 
@@ -339,6 +394,30 @@ private struct MarketListingDetailView: View {
     private func priceChangeText(_ change: Int) -> String {
         let sign = change > 0 ? "+" : "-"
         return "\(sign)\(abs(change).formatted())"
+    }
+
+    private func toggleFavorite() {
+        guard !isUpdatingFavorite else { return }
+        let previousValue = listing.isLiked
+        let desiredValue = !previousValue
+        listing.isLiked = desiredValue
+        try? modelContext.save()
+
+        guard listing.isSyncedFromServer == true else { return }
+        isUpdatingFavorite = true
+        Task { @MainActor in
+            do {
+                try await SupabaseMarketInteractionRepository.shared.setFavorite(
+                    listingID: listing.id,
+                    isFavorite: desiredValue
+                )
+            } catch {
+                listing.isLiked = previousValue
+                try? modelContext.save()
+                mutationError = error.localizedDescription
+            }
+            isUpdatingFavorite = false
+        }
     }
 
     @MainActor

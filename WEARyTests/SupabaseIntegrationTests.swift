@@ -309,7 +309,7 @@ struct SupabaseIntegrationTests {
                 .execute()
 
             let listings = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
-            let listing = try #require(listings.first { $0.id == listingID })
+            var listing = try #require(listings.first { $0.id == listingID })
             #expect(listing.sellerID == userID)
             #expect(listing.title == marker)
             #expect(listing.price == 45_000)
@@ -320,6 +320,25 @@ struct SupabaseIntegrationTests {
             #expect(listing.isOwnedByCurrentUser)
             #expect(listing.galleryImages == [pixelPNG])
             #expect(listing.showsWardrobeVerification)
+
+            try await SupabaseMarketInteractionRepository.shared.setFavorite(
+                listingID: listingID,
+                isFavorite: true
+            )
+            listing = try #require(
+                try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+                    .first { $0.id == listingID }
+            )
+            #expect(listing.isLiked)
+            try await SupabaseMarketInteractionRepository.shared.setFavorite(
+                listingID: listingID,
+                isFavorite: false
+            )
+            listing = try #require(
+                try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+                    .first { $0.id == listingID }
+            )
+            #expect(!listing.isLiked)
             #expect(listing.sourceGarmentID == sourceGarmentID)
             #expect(listing.garmentCutoutImageDataSnapshot == pixelPNG)
             #expect(listing.verificationPurchasePrice == 120_000)
@@ -335,6 +354,47 @@ struct SupabaseIntegrationTests {
             .eq("id", value: listingID.uuidString)
             .execute()
 
+        if let capturedError { throw capturedError }
+    }
+
+    @Test("마켓 관심 변경은 Realtime 이벤트를 발생시킨다")
+    func receivesRealtimeEventForMarketFavorite() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+        let marker = "Market realtime integration \(UUID().uuidString)"
+        let repository = SupabaseMarketListingMutationRepository.shared
+        let listingID = try await repository.create(MarketListingMutationDraft(
+            sourceGarmentID: nil, title: marker, detailText: "Realtime 검증", price: 10_000,
+            brand: "WEARy", categoryRaw: GarmentCategory.top.rawValue, size: "M",
+            colorHex: "778899", condition: .excellent, status: .active,
+            meetingPlace: "", meetingAddress: "", meetingLatitude: nil, meetingLongitude: nil,
+            galleryImages: [], showsWardrobeVerification: false, garmentName: nil,
+            cutoutImageData: nil, purchasePrice: nil, lastWornAt: nil, wearCount: nil
+        ))
+        var capturedError: Error?
+
+        do {
+            let events = try await SupabaseMarketRealtimeRepository.shared.events()
+            try await SupabaseMarketInteractionRepository.shared.setFavorite(
+                listingID: listingID,
+                isFavorite: true
+            )
+            #expect(await receivesFirstEvent(from: events, timeout: .seconds(5)))
+        } catch {
+            capturedError = error
+        }
+
+        await SupabaseMarketRealtimeRepository.shared.stop()
+        _ = try? await SupabaseMarketInteractionRepository.shared.setFavorite(
+            listingID: listingID,
+            isFavorite: false
+        )
+        _ = try? await repository.delete(listingID: listingID)
+        _ = try? await client.from("market_listings").delete()
+            .eq("id", value: listingID.uuidString).execute()
         if let capturedError { throw capturedError }
     }
 
