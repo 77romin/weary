@@ -79,7 +79,10 @@ flowchart LR
 - `market_listing_media`는 매물당 최대 8장의 이미지 경로와 순서를 저장한다.
 - `market_listing_verifications`는 구매가·착용 횟수 등 개인 옷장 스냅샷을 매물 본문과 분리한다. 판매자가 공개한 행 또는 본인 행만 조회할 수 있다.
 - `market_listing_favorites`는 사용자 본인만 읽고 변경할 수 있다.
-- 모든 마켓 테이블은 RLS와 Realtime publication이 적용됐다. 앱 화면은 아직 SwiftData Mock을 사용하며 Storage와 Repository 연결이 다음 단계다.
+- 모든 마켓 테이블은 RLS와 Realtime publication이 적용됐다.
+- private `market-media` 버킷은 10MB 이하 이미지 파일만 허용하며 `사용자ID/매물ID/파일명` 경로의 매물 소유자를 확인한다.
+- 다른 사용자는 공개 상태 매물에 메타데이터로 연결된 갤러리와 판매자가 공개한 인증 누끼만 새로 내려받을 수 있다. 이미 공개되어 사용자의 기기나 네트워크 캐시에 저장된 사본까지 회수할 수는 없음을 공개 화면에서 고려한다.
+- 앱 화면은 아직 SwiftData Mock을 사용하며 Repository 연결이 다음 단계다.
 
 ## 3. 개인 iCloud 영역 ERD
 
@@ -476,6 +479,8 @@ sequenceDiagram
 1. 판매 상품과 이미지 업로드를 구현한다.
    - 2026-09-12: `market_listings`, `market_listing_media`, `market_listing_verifications`, `market_listing_favorites`와 RLS를 개발 프로젝트에 적용했다.
    - 두 익명 사용자로 판매자 전용 변경, 가격 이력, 사진 메타데이터 권한, 숨긴 옷장 인증과 개인 관심 목록 격리를 검증했다.
+   - 2026-09-12: 10MB 이미지 전용 private `market-media` 버킷과 매물 공개 범위를 따르는 Storage RLS를 적용했다.
+   - 소유자 업로드·조회·삭제, 공개 매물 이미지 조회, 비공개 인증·숨긴 매물 이미지 및 타인 변경 차단을 실제 Storage API로 검증했다.
    - 매물별 다중 이미지 순서와 판매자의 옷장 데이터 공개 동의를 함께 저장한다.
 2. 상품 단위 1:1 대화와 채팅 기반 거래 합의를 구현한다.
 3. 판매자만 예약·판매 완료 상태를 변경할 수 있도록 상태 전이와 동시성 제어를 구현한다.

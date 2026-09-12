@@ -136,6 +136,8 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 - 중고 매물·최대 8장 사진 메타데이터·관심·선택적 옷장 인증을 위한 마켓 PostgreSQL 스키마
 - 판매자만 매물을 변경하고 숨긴 옷장 인증과 사용자별 관심 목록을 보호하는 마켓 RLS
 - 가격 변경 시 직전 가격을 서버에서 자동 기록하고 매물 변경을 전달하는 마켓 Realtime 기반
+- 매물 갤러리와 공개 인증 누끼를 위한 10MB 이미지 전용 private `market-media` Storage 버킷
+- `사용자ID/매물ID/파일명` 소유권과 매물·인증 공개 상태를 함께 검사하는 마켓 Storage RLS
 
 피드 화면은 로컬 샘플을 유지하면서 Supabase의 최신 원격 게시물을 15개씩 이어서 표시합니다. 새 서버 변경이 도착하면 현재까지 읽은 범위를 갱신하고, 다음 페이지는 기존 원격·로컬 캐시를 지우지 않고 병합합니다. 네트워크가 실패하면 마지막 캐시와 로컬 피드를 그대로 보여 줍니다. 새 게시물과 공개 이미지·아이템, 원격 게시물의 좋아요·댓글·저장·팔로우는 실제 서버에 저장됩니다. 발표용 샘플 게시물은 네트워크와 무관하게 기존 로컬 동작을 유지합니다.
 
@@ -244,6 +246,7 @@ scripts/verify_supabase_community.sh
 scripts/verify_supabase_storage.sh
 scripts/verify_supabase_profiles.sh
 scripts/verify_supabase_market.sh
+scripts/verify_supabase_market_storage.sh
 ```
 
 실제 Swift Repository의 게시·이미지 업로드·소셜 상호작용·피드 재조회·커서 페이지네이션·Realtime 이벤트 왕복은 다음 선택형 통합 테스트로 검증합니다. 생성한 게시물, 관계와 Storage 파일은 테스트 종료 시 삭제됩니다.
@@ -402,7 +405,7 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
   - [x] 매물·사진 메타데이터·관심·선택적 옷장 인증 스키마 구현
   - [x] 판매자 변경 권한과 인증 정보·관심 목록 보호 RLS 검증
   - [x] 직전 가격 자동 기록과 마켓 테이블 Realtime publication 적용
-  - [ ] private 마켓 이미지 Storage 버킷과 정책 구현
+  - [x] private 마켓 이미지 Storage 버킷과 정책 구현
   - [ ] 매물 목록·상세 읽기와 SwiftData 캐시 병합
   - [ ] 매물 생성·수정·상태 변경·삭제와 다중 이미지 업로드 연결
   - [ ] 관심 등록·해제 연결과 Realtime 갱신
