@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct WEARyApp: App {
+    @StateObject private var authentication = AuthenticationStore()
     private let modelContainer: ModelContainer = {
         let schema = Schema([
             Garment.self,
@@ -25,6 +26,7 @@ struct WEARyApp: App {
         WindowGroup {
             AppEntryView()
                 .preferredColorScheme(.light)
+                .environmentObject(authentication)
         }
         .modelContainer(modelContainer)
     }
@@ -32,31 +34,37 @@ struct WEARyApp: App {
 
 private struct AppEntryView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var authentication: AuthenticationStore
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var didCompleteForcedOnboarding = false
     @State private var isPreparingApp = true
 
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+    private let forcesAuthentication = ProcessInfo.processInfo.arguments.contains("-ui-testing-authentication")
     private let forcesOnboarding = ProcessInfo.processInfo.arguments.contains("-ui-testing-onboarding")
 
     var body: some View {
         Group {
             if isPreparingApp {
                 StartupLoadingView()
-            } else if shouldShowOnboarding {
-                OnboardingView {
-                    hasCompletedOnboarding = true
-                    didCompleteForcedOnboarding = true
-                }
+            } else if forcesAuthentication {
+                AuthenticationView()
+            } else if isUITesting {
+                testedContent
             } else {
-                RootTabView()
+                switch authentication.phase {
+                case .loading:
+                    StartupLoadingView()
+                case .signedOut:
+                    AuthenticationView()
+                case .signedIn:
+                    authenticatedContent
+                }
             }
         }
         .task {
             guard isPreparingApp else { return }
-            Task {
-                await SupabaseSessionManager.shared.bootstrap()
-            }
+            if !isUITesting { await authentication.bootstrap() }
             SampleDataSeeder.seedIfNeeded(in: modelContext)
             if !isUITesting {
                 try? await Task.sleep(for: .milliseconds(900))
@@ -64,6 +72,36 @@ private struct AppEntryView: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 isPreparingApp = false
             }
+        }
+        .onOpenURL { url in
+            SupabaseService.client?.handle(url)
+        }
+        .sheet(isPresented: $authentication.requiresPasswordUpdate) {
+            PasswordUpdateView()
+        }
+    }
+
+    @ViewBuilder
+    private var testedContent: some View {
+        if shouldShowOnboarding {
+            OnboardingView {
+                hasCompletedOnboarding = true
+                didCompleteForcedOnboarding = true
+            }
+        } else {
+            RootTabView()
+        }
+    }
+
+    @ViewBuilder
+    private var authenticatedContent: some View {
+        if shouldShowOnboarding {
+            OnboardingView {
+                hasCompletedOnboarding = true
+                didCompleteForcedOnboarding = true
+            }
+        } else {
+            RootTabView()
         }
     }
 

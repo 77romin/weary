@@ -461,4 +461,26 @@ struct OutfitFlowTests {
 
         #expect(outfit.orderedItems.compactMap(\.garment?.id) == [shoes.id, hat.id])
     }
+
+    @Test("회원 아이디는 허용된 형식만 통과한다")
+    func validatesAccountHandle() {
+        #expect(AccountInputValidator.isValidHandle("weary.user_01"))
+        #expect(!AccountInputValidator.isValidHandle("WEARy"))
+        #expect(!AccountInputValidator.isValidHandle("두글자"))
+        #expect(!AccountInputValidator.isValidHandle("ab"))
+        #expect(!AccountInputValidator.isValidHandle("space user"))
+    }
+
+    @Test("새 매물은 닉네임과 무관하게 내 매물로 식별한다")
+    func recognizesOwnedListingWithCustomNickname() {
+        let listing = MarketListing(
+            sellerName: "새 닉네임",
+            title: "재킷",
+            detailText: "설명",
+            price: 30_000,
+            isOwnedByCurrentUser: true
+        )
+
+        #expect(listing.isOwnedByCurrentUser)
+    }
 }

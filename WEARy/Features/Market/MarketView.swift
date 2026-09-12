@@ -337,6 +337,7 @@ private struct MarketListingDetailView: View {
 struct CreateListingView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var authentication: AuthenticationStore
     let garment: Garment
     @State private var title: String
     @State private var detailText: String
@@ -447,13 +448,14 @@ struct CreateListingView: View {
 
     private func save() {
         modelContext.insert(MarketListing(
-            sellerName: "나의 WEARy", title: title, detailText: detailText,
+            sellerName: authentication.displayName, title: title, detailText: detailText,
             price: Int(price) ?? 0, originalPrice: garment.purchasePrice,
             size: garment.size, condition: condition, accentHex: garment.colorHex,
             meetingPlace: meetingPlace, meetingAddress: meetingAddress,
             meetingLatitude: meetingLatitude, meetingLongitude: meetingLongitude,
             chatCount: 0, galleryImages: galleryImages,
-            showsWardrobeVerification: showsWardrobeVerification, garment: garment
+            showsWardrobeVerification: showsWardrobeVerification, garment: garment,
+            isOwnedByCurrentUser: true
         ))
         garment.status = .selling
         try? modelContext.save()

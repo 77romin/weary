@@ -99,7 +99,7 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
             snapshots.append(CommunityFeedPostSnapshot(
                 id: record.id,
                 authorID: record.authorID,
-                authorName: isCurrentUser ? "나" : record.author.displayName,
+                authorName: record.author.displayName,
                 authorHandle: isCurrentUser ? "my.weary" : (record.author.handle ?? "weary"),
                 authorInitials: isCurrentUser ? "ME" : record.author.avatarInitials,
                 authorAccentHex: record.author.accentHex,

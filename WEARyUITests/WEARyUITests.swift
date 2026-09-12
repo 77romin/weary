@@ -9,6 +9,27 @@ final class WEARyUITests: XCTestCase {
         return app
     }
 
+    func testSignedOutLaunchShowsAuthenticationOptions() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-authentication"]
+        app.launch()
+
+        XCTAssertTrue(app.otherElements["auth.login"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["auth.email"].exists)
+        XCTAssertTrue(app.secureTextFields["auth.password"].exists)
+        XCTAssertTrue(app.buttons["아이디 / 비밀번호 찾기"].exists)
+        XCTAssertTrue(app.buttons["auth.oauth.google"].exists)
+        XCTAssertTrue(app.buttons["auth.oauth.kakao"].exists)
+        XCTAssertTrue(app.buttons["auth.oauth.apple"].exists)
+        XCTAssertTrue(app.buttons["auth.openSignUp"].exists)
+
+        app.buttons["auth.openSignUp"].tap()
+        XCTAssertTrue(app.navigationBars["회원가입"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["signup.handle"].exists)
+        XCTAssertTrue(app.buttons["signup.submit"].exists)
+    }
+
     func testCoreOutfitFlowUpdatesMyPage() throws {
         continueAfterFailure = false
         let app = launchApp()

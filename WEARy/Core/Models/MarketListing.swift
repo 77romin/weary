@@ -47,6 +47,7 @@ final class MarketListing {
     var verificationPurchasePrice: Int?
     var verificationLastWornAt: Date?
     var verificationWearCount: Int?
+    var ownedByCurrentUser: Bool?
 
     init(
         id: UUID = UUID(),
@@ -69,7 +70,8 @@ final class MarketListing {
         chatCount: Int? = nil,
         galleryImages: [Data] = [],
         showsWardrobeVerification: Bool = false,
-        garment: Garment? = nil
+        garment: Garment? = nil,
+        isOwnedByCurrentUser: Bool? = nil
     ) {
         self.id = id
         self.sellerName = sellerName
@@ -91,6 +93,7 @@ final class MarketListing {
         self.chatCount = chatCount
         galleryData = try? PropertyListEncoder().encode(galleryImages)
         wardrobeVerificationVisible = showsWardrobeVerification
+        ownedByCurrentUser = isOwnedByCurrentUser
         captureSnapshot(from: garment)
     }
 
@@ -105,7 +108,7 @@ final class MarketListing {
     }
 
     var isOwnedByCurrentUser: Bool {
-        sellerName == "나의 WEARy" || sellerName == "나의 옷장"
+        ownedByCurrentUser ?? (sellerName == "나의 WEARy" || sellerName == "나의 옷장")
     }
 
     var displayedMeetingPlace: String {

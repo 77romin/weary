@@ -342,6 +342,7 @@ private struct CommunityPostCard: View {
 private struct CreateCommunityPostView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var authentication: AuthenticationStore
     @Query(sort: \Outfit.wornAt, order: .reverse) private var outfits: [Outfit]
     @State private var selectedOutfitID: UUID?
     @State private var caption = ""
@@ -513,7 +514,7 @@ private struct CreateCommunityPostView: View {
                 selectedOutfit.isPublished = true
                 modelContext.insert(CommunityPost(
                     id: postID,
-                    authorName: "나",
+                    authorName: authentication.displayName,
                     authorHandle: "my.weary",
                     authorInitials: "ME",
                     caption: trimmedCaption,

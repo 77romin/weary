@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var authentication: AuthenticationStore
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
@@ -11,6 +12,7 @@ struct ProfileView: View {
     @State private var demoResetMessage: String?
     @State private var selectedSocialList: SocialListKind?
     @State private var remoteSocialGraph: CommunitySocialGraphSnapshot?
+    @State private var showingAccountProfile = false
 
     var body: some View {
         NavigationStack {
@@ -18,19 +20,29 @@ struct ProfileView: View {
                 WEARyTheme.canvas.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        HStack(spacing: 14) {
-                            Text("ME")
-                                .font(.title3.weight(.black))
-                                .frame(width: 62, height: 62)
-                                .background(WEARyTheme.lime, in: Circle())
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("나의 WEARy")
-                                    .font(.title3.weight(.bold))
-                                Text("내 스타일이 쌓이는 중")
-                                    .font(.subheadline)
+                        Button {
+                            showingAccountProfile = true
+                        } label: {
+                            HStack(spacing: 14) {
+                                Text(authentication.profile?.avatarInitials ?? "ME")
+                                    .font(.title3.weight(.black))
+                                    .frame(width: 62, height: 62)
+                                    .background(WEARyTheme.lime, in: Circle())
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(authentication.displayName)
+                                        .font(.title3.weight(.bold))
+                                    Text(authentication.handle.map { "@\($0)" } ?? "아이디를 설정해 주세요")
+                                        .font(.subheadline)
+                                        .foregroundStyle(WEARyTheme.secondaryInk)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
                                     .foregroundStyle(WEARyTheme.secondaryInk)
                             }
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("내 정보 수정")
+                        .accessibilityIdentifier("profile.account")
 
                         HStack(spacing: 0) {
                             socialCountButton(
@@ -116,6 +128,9 @@ struct ProfileView: View {
                     title: kind == .followers ? "팔로워" : "팔로잉",
                     users: kind == .followers ? followerUsers : followingUsers
                 )
+            }
+            .sheet(isPresented: $showingAccountProfile) {
+                AccountProfileView()
             }
             .alert("데모 데이터를 초기화할까요?", isPresented: $showsDemoResetConfirmation) {
                 Button("취소", role: .cancel) {}
