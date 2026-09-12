@@ -115,6 +115,10 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 - 최초 실행 시 익명 사용자 생성 및 재실행 시 세션 복원
 - Auth 사용자 생성 트리거를 통한 `profiles` 행 자동 생성
 - 인증 사용자만 프로필을 읽고 본인 프로필만 수정할 수 있는 RLS
+- 게시물, 이미지 메타데이터, 아이템 스냅샷, 댓글, 좋아요, 북마크와 팔로우용 PostgreSQL 스키마
+- 공개·팔로워·비공개 게시물 가시성, 작성자 수정 권한과 개인 북마크를 보호하는 RLS
+
+커뮤니티 서버 스키마는 구성됐지만 현재 피드 UI는 발표 안정성을 위해 아직 로컬 SwiftData를 사용합니다. 다음 단계에서 Repository 단위로 서버 읽기·쓰기를 연결합니다.
 
 ### 이번 주 제외 범위
 
@@ -194,6 +198,12 @@ xcodebuild -project WEARy.xcodeproj \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   CODE_SIGNING_ALLOWED=NO \
   test
+```
+
+Supabase 커뮤니티 권한은 연결된 개발 프로젝트를 대상으로 다음처럼 검증합니다. 테스트 게시물과 반응은 종료 시 삭제되지만 익명 Auth 테스트 사용자 두 명은 남습니다.
+
+```bash
+scripts/verify_supabase_community.sh
 ```
 
 ## TO-DO-LIST
@@ -311,7 +321,10 @@ xcodebuild -project WEARy.xcodeproj \
   - [x] 익명 인증과 로컬 세션 복원 구현
   - [x] `profiles` 마이그레이션, 생성 트리거와 RLS 적용
   - [x] 시뮬레이터에서 실제 사용자·프로필 생성 검증
-- [ ] 커뮤니티 게시물·댓글·좋아요·팔로우 스키마와 RLS 구현
+- [x] 커뮤니티 게시물·댓글·좋아요·북마크·팔로우 스키마와 RLS 구현
+  - [x] 공개·팔로워·비공개 게시물 접근 정책 검증
+  - [x] 작성자 전용 수정·삭제와 타 사용자 변조 차단 검증
+  - [x] 댓글·좋아요·팔로우 공개 관계와 북마크 비공개 정책 검증
 - [ ] 커뮤니티 이미지 Storage 버킷과 업로드 정책 구현
 - [ ] 로컬 커뮤니티 Mock을 Supabase Repository로 단계적 교체
 - [ ] 커뮤니티 신고, 차단, 콘텐츠 운영 정책 설계

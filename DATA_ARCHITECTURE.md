@@ -422,6 +422,8 @@ sequenceDiagram
 1. Supabase 개발·운영 프로젝트와 환경 변수 정책을 구성한다.
 2. Apple로 로그인과 Supabase Auth를 연결한다.
 3. PostgreSQL migration으로 프로필, 게시물과 반응 테이블을 생성한다.
+   - 2026-09-12: `posts`, `post_media`, `post_items`, `comments`, `post_likes`, `bookmarks`, `follows`와 RLS를 개발 프로젝트에 적용했다.
+   - 두 익명 사용자로 게시물 가시성, 작성자 권한, 댓글·좋아요·북마크·팔로우 정책을 검증했다.
 4. 공개 이미지 Storage bucket과 RLS 정책을 구성한다.
 5. 피드 페이지네이션, 게시물 작성, 좋아요, 댓글, 저장과 팔로우를 구현한다.
 6. 신고, 차단, soft delete와 최소 운영 도구를 함께 구현한다.
