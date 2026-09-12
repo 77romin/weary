@@ -373,7 +373,7 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
   - [x] 변경 불가 아이디, 수정 가능 닉네임과 선택 신체 치수 저장
   - [x] 닉네임을 원격 피드 작성자명과 새 마켓 판매자명에 반영
   - [ ] Supabase Redirect URL 허용 목록 등록
-  - [ ] Google·Kakao·Apple 개발자 콘솔 키 발급 및 Supabase Provider 활성화
+  - [ ] Google·Kakao·Apple 개발자 콘솔 키 발급 및 Supabase Provider 활성화 _(당장은 보류)_
 - [x] 커뮤니티 게시물·댓글·좋아요·북마크·팔로우 스키마와 RLS 구현
   - [x] 공개·팔로워·비공개 게시물 접근 정책 검증
   - [x] 작성자 전용 수정·삭제와 타 사용자 변조 차단 검증
