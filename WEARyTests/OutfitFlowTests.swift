@@ -460,6 +460,7 @@ struct OutfitFlowTests {
             showsWardrobeVerification: true,
             sourceGarmentID: UUID(),
             garmentNameSnapshot: "옷장 코트",
+            garmentBrandSnapshot: "WEARy",
             garmentCategoryRawSnapshot: GarmentCategory.outer.rawValue,
             garmentColorHexSnapshot: "112233",
             garmentCutoutImageDataSnapshot: cutout,

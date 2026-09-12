@@ -29,6 +29,7 @@ struct MarketListingSnapshot: Identifiable, Sendable {
     let showsWardrobeVerification: Bool
     let sourceGarmentID: UUID?
     let garmentNameSnapshot: String?
+    let garmentBrandSnapshot: String?
     let garmentCategoryRawSnapshot: String?
     let garmentColorHexSnapshot: String?
     let garmentCutoutImageDataSnapshot: Data?
@@ -135,6 +136,7 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
                 showsWardrobeVerification: verification?.isVisible ?? false,
                 sourceGarmentID: verification?.sourcePrivateID ?? (isOwned ? record.sourcePrivateID : nil),
                 garmentNameSnapshot: verification?.garmentNameSnapshot,
+                garmentBrandSnapshot: record.brandSnapshot,
                 garmentCategoryRawSnapshot: record.categorySnapshot,
                 garmentColorHexSnapshot: record.colorHexSnapshot,
                 garmentCutoutImageDataSnapshot: cutoutImage,

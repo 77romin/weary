@@ -338,6 +338,83 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("마켓 매물을 생성하고 수정·판매완료·삭제한다")
+    func mutatesMarketListingThroughRemoteRepository() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+        let pixelPNG = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )!
+        let sourceID = UUID()
+        let marker = "Market mutation integration \(UUID().uuidString)"
+        let repository = SupabaseMarketListingMutationRepository.shared
+        let createDraft = MarketListingMutationDraft(
+            sourceGarmentID: sourceID, title: marker, detailText: "생성 상세", price: 50_000,
+            brand: "WEARy", categoryRaw: GarmentCategory.outer.rawValue, size: "M",
+            colorHex: "334455", condition: .excellent, status: .active,
+            meetingPlace: "성수역", meetingAddress: "서울 성동구",
+            meetingLatitude: 37.5445, meetingLongitude: 127.0559,
+            galleryImages: [pixelPNG], showsWardrobeVerification: true,
+            garmentName: "통합 재킷", cutoutImageData: pixelPNG,
+            purchasePrice: 120_000, lastWornAt: nil, wearCount: 2
+        )
+        let listingID = try await repository.create(createDraft)
+        var capturedError: Error?
+
+        do {
+            var listing = try #require(
+                try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+                    .first { $0.id == listingID }
+            )
+            #expect(listing.title == marker)
+            #expect(listing.galleryImages == [pixelPNG])
+            #expect(listing.showsWardrobeVerification)
+
+            let updateDraft = MarketListingMutationDraft(
+                sourceGarmentID: sourceID, title: marker + " 수정", detailText: "수정 상세",
+                price: 42_000, brand: "WEARy", categoryRaw: GarmentCategory.outer.rawValue,
+                size: "M", colorHex: "334455", condition: .likeNew, status: .reserved,
+                meetingPlace: "서울숲", meetingAddress: "서울 성동구 서울숲",
+                meetingLatitude: 37.5443, meetingLongitude: 127.0374,
+                galleryImages: [pixelPNG, pixelPNG], showsWardrobeVerification: false,
+                garmentName: "통합 재킷", cutoutImageData: pixelPNG,
+                purchasePrice: 120_000, lastWornAt: nil, wearCount: 2
+            )
+            try await repository.update(listingID: listingID, draft: updateDraft)
+            listing = try #require(
+                try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+                    .first { $0.id == listingID }
+            )
+            #expect(listing.title == marker + " 수정")
+            #expect(listing.price == 42_000)
+            #expect(listing.previousPrice == 50_000)
+            #expect(listing.status == .reserved)
+            #expect(listing.galleryImages.count == 2)
+            #expect(!listing.showsWardrobeVerification)
+
+            try await repository.updateStatus(listingID: listingID, status: .sold)
+            listing = try #require(
+                try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+                    .first { $0.id == listingID }
+            )
+            #expect(listing.status == .sold)
+
+            try await repository.delete(listingID: listingID)
+            let remaining = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+            #expect(!remaining.contains { $0.id == listingID })
+        } catch {
+            capturedError = error
+        }
+
+        _ = try? await repository.delete(listingID: listingID)
+        _ = try? await client.from("market_listings").delete()
+            .eq("id", value: listingID.uuidString).execute()
+        if let capturedError { throw capturedError }
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration

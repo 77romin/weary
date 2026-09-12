@@ -170,6 +170,7 @@ private struct MarketListingDetailView: View {
     @State private var showingChat = false
     @State private var showingEditor = false
     @State private var showingDeleteConfirmation = false
+    @State private var mutationError: String?
 
     var body: some View {
         ScrollView {
@@ -273,11 +274,14 @@ private struct MarketListingDetailView: View {
         }
         .sheet(isPresented: $showingEditor) { EditListingView(listing: listing) }
         .confirmationDialog("이 매물을 삭제할까요?", isPresented: $showingDeleteConfirmation) {
-            Button("삭제", role: .destructive) { deleteListing() }
+            Button("삭제", role: .destructive) { Task { await deleteListing() } }
             Button("취소", role: .cancel) { }
         } message: {
             Text("마켓 게시물만 삭제되고 옷은 내 옷장에 남습니다.")
         }
+        .alert("매물 삭제 실패", isPresented: errorPresentation($mutationError)) {
+            Button("확인", role: .cancel) { }
+        } message: { Text(mutationError ?? "다시 시도해 주세요.") }
     }
 
     private var ownerActions: some View {
@@ -337,7 +341,16 @@ private struct MarketListingDetailView: View {
         return "\(sign)\(abs(change).formatted())"
     }
 
-    private func deleteListing() {
+    @MainActor
+    private func deleteListing() async {
+        if listing.isSyncedFromServer == true {
+            do {
+                try await SupabaseMarketListingMutationRepository.shared.delete(listingID: listing.id)
+            } catch {
+                mutationError = error.localizedDescription
+                return
+            }
+        }
         if let garment = listing.sourceGarment(in: modelContext), garment.status == .selling {
             garment.status = .active
         }
@@ -371,6 +384,8 @@ struct CreateListingView: View {
     @State private var condition: ListingCondition = .excellent
     @State private var galleryImages: [Data] = []
     @State private var showsWardrobeVerification = false
+    @State private var isSaving = false
+    @State private var mutationError: String?
 
     init(garment: Garment) {
         self.garment = garment
@@ -419,13 +434,16 @@ struct CreateListingView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
-                Button("등록", action: save).fontWeight(.bold)
-                    .disabled(title.isEmpty || Int(price) == nil)
+                Button("등록") { Task { await save() } }.fontWeight(.bold)
+                    .disabled(title.isEmpty || Int(price) == nil || isSaving)
             }
         }
         .sheet(isPresented: $showingPlacePicker) {
             MeetingPlacePickerView(initialSelection: selectedMeetingPlace, onSelect: applyMeetingPlace)
         }
+        .alert("매물 등록 실패", isPresented: errorPresentation($mutationError)) {
+            Button("확인", role: .cancel) { }
+        } message: { Text(mutationError ?? "다시 시도해 주세요.") }
     }
 
     private var meetingPlaceButton: some View {
@@ -467,16 +485,40 @@ struct CreateListingView: View {
         meetingLongitude = selection.longitude
     }
 
-    private func save() {
+    @MainActor
+    private func save() async {
+        guard !isSaving, let priceValue = Int(price), priceValue > 0 else { return }
+        isSaving = true
+        defer { isSaving = false }
+        let draft = MarketListingMutationDraft(
+            sourceGarmentID: garment.id, title: title, detailText: detailText,
+            price: priceValue, brand: garment.brand, categoryRaw: garment.categoryRaw,
+            size: garment.size, colorHex: garment.colorHex, condition: condition, status: .active,
+            meetingPlace: meetingPlace, meetingAddress: meetingAddress,
+            meetingLatitude: meetingLatitude, meetingLongitude: meetingLongitude,
+            galleryImages: galleryImages, showsWardrobeVerification: showsWardrobeVerification,
+            garmentName: garment.name, cutoutImageData: garment.cutoutImageData,
+            purchasePrice: garment.purchasePrice, lastWornAt: garment.lastWornAt,
+            wearCount: garment.wearCount
+        )
+        let listingID: UUID
+        do {
+            listingID = try await SupabaseMarketListingMutationRepository.shared.create(draft)
+        } catch {
+            mutationError = error.localizedDescription
+            return
+        }
         modelContext.insert(MarketListing(
+            id: listingID,
             sellerName: authentication.displayName, title: title, detailText: detailText,
-            price: Int(price) ?? 0, originalPrice: garment.purchasePrice,
+            price: priceValue, originalPrice: garment.purchasePrice,
             size: garment.size, condition: condition, accentHex: garment.colorHex,
             meetingPlace: meetingPlace, meetingAddress: meetingAddress,
             meetingLatitude: meetingLatitude, meetingLongitude: meetingLongitude,
             chatCount: 0, galleryImages: galleryImages,
             showsWardrobeVerification: showsWardrobeVerification, garment: garment,
-            isOwnedByCurrentUser: true
+            isOwnedByCurrentUser: true, isSyncedFromServer: true,
+            serverSellerID: try? await SupabaseSessionManager.shared.authenticatedUserID()
         ))
         garment.status = .selling
         try? modelContext.save()
@@ -501,6 +543,8 @@ private struct EditListingView: View {
     @State private var galleryImages: [Data]
     @State private var showsWardrobeVerification: Bool
     @State private var showingSoldConfirmation = false
+    @State private var isSaving = false
+    @State private var mutationError: String?
 
     init(listing: MarketListing) {
         self.listing = listing
@@ -571,17 +615,17 @@ private struct EditListingView: View {
                     Button("취소") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("저장", action: save)
+                    Button("저장") { Task { await save() } }
                         .fontWeight(.bold)
                         .disabled(
                             title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                            (Int(priceText) ?? 0) <= 0
+                            (Int(priceText) ?? 0) <= 0 || isSaving
                         )
                         .accessibilityIdentifier("market.saveEdit")
                 }
             }
             .confirmationDialog("판매완료로 변경할까요?", isPresented: $showingSoldConfirmation) {
-                Button("판매완료", role: .destructive, action: markAsSold)
+                Button("판매완료", role: .destructive) { Task { await markAsSold() } }
                 Button("취소", role: .cancel) { }
             } message: {
                 Text("마켓에서 판매 완료 상태로 표시됩니다.")
@@ -589,6 +633,9 @@ private struct EditListingView: View {
             .sheet(isPresented: $showingPlacePicker) {
                 MeetingPlacePickerView(initialSelection: selectedMeetingPlace, onSelect: applyMeetingPlace)
             }
+            .alert("매물 수정 실패", isPresented: errorPresentation($mutationError)) {
+                Button("확인", role: .cancel) { }
+            } message: { Text(mutationError ?? "다시 시도해 주세요.") }
         }
     }
 
@@ -631,13 +678,34 @@ private struct EditListingView: View {
         meetingLongitude = selection.longitude
     }
 
-    private func save() {
+    @MainActor
+    private func save() async {
         guard let newPrice = Int(priceText), newPrice > 0 else { return }
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        if listing.isSyncedFromServer == true {
+            do {
+                try await SupabaseMarketListingMutationRepository.shared.update(
+                    listingID: listing.id,
+                    draft: mutationDraft(price: newPrice, status: status)
+                )
+            } catch {
+                mutationError = error.localizedDescription
+                return
+            }
+        }
+        applyLocalChanges(price: newPrice, status: status)
+        dismiss()
+    }
+
+    @MainActor
+    private func applyLocalChanges(price newPrice: Int, status newStatus: ListingStatus) {
         listing.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.updatePrice(to: newPrice)
         listing.condition = condition
-        listing.status = status
-        listing.sourceGarment(in: modelContext)?.status = status == .sold ? .sold : .selling
+        listing.status = newStatus
+        listing.sourceGarment(in: modelContext)?.status = newStatus == .sold ? .sold : .selling
         listing.detailText = detailText.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.meetingPlace = meetingPlace.trimmingCharacters(in: .whitespacesAndNewlines)
         listing.meetingAddress = meetingAddress.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -646,15 +714,52 @@ private struct EditListingView: View {
         listing.updateGalleryImages(galleryImages)
         listing.showsWardrobeVerification = showsWardrobeVerification
         try? modelContext.save()
+    }
+
+    @MainActor
+    private func markAsSold() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        if listing.isSyncedFromServer == true {
+            do {
+                try await SupabaseMarketListingMutationRepository.shared.updateStatus(
+                    listingID: listing.id, status: .sold
+                )
+            } catch {
+                mutationError = error.localizedDescription
+                return
+            }
+        }
+        applyLocalChanges(price: listing.price, status: .sold)
         dismiss()
     }
 
-    private func markAsSold() {
-        listing.status = .sold
-        listing.sourceGarment(in: modelContext)?.status = .sold
-        try? modelContext.save()
-        dismiss()
+    private func mutationDraft(price: Int, status: ListingStatus) -> MarketListingMutationDraft {
+        MarketListingMutationDraft(
+            sourceGarmentID: listing.sourceGarmentID,
+            title: title, detailText: detailText, price: price,
+            brand: listing.garmentBrandSnapshot ?? "",
+            categoryRaw: listing.garmentCategoryRawSnapshot ?? "",
+            size: listing.size, colorHex: listing.garmentColorHexSnapshot ?? listing.accentHex,
+            condition: condition, status: status,
+            meetingPlace: meetingPlace, meetingAddress: meetingAddress,
+            meetingLatitude: meetingLatitude, meetingLongitude: meetingLongitude,
+            galleryImages: galleryImages, showsWardrobeVerification: showsWardrobeVerification,
+            garmentName: listing.garmentNameSnapshot,
+            cutoutImageData: listing.garmentCutoutImageDataSnapshot,
+            purchasePrice: listing.verificationPurchasePrice,
+            lastWornAt: listing.verificationLastWornAt,
+            wearCount: listing.verificationWearCount
+        )
     }
+}
+
+private func errorPresentation(_ message: Binding<String?>) -> Binding<Bool> {
+    Binding(
+        get: { message.wrappedValue != nil },
+        set: { if !$0 { message.wrappedValue = nil } }
+    )
 }
 
 private struct SellerChatListView: View {

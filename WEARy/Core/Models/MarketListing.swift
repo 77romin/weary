@@ -41,6 +41,7 @@ final class MarketListing {
     var wardrobeVerificationVisible: Bool?
     var sourceGarmentID: UUID?
     var garmentNameSnapshot: String?
+    var garmentBrandSnapshot: String?
     var garmentCategoryRawSnapshot: String?
     var garmentColorHexSnapshot: String?
     @Attribute(.externalStorage) var garmentCutoutImageDataSnapshot: Data?
@@ -167,6 +168,7 @@ final class MarketListing {
         guard let garment else { return }
         sourceGarmentID = garment.id
         garmentNameSnapshot = garment.name
+        garmentBrandSnapshot = garment.brand
         garmentCategoryRawSnapshot = garment.categoryRaw
         garmentColorHexSnapshot = garment.colorHex
         garmentCutoutImageDataSnapshot = garment.cutoutImageData
@@ -197,6 +199,7 @@ final class MarketListing {
         wardrobeVerificationVisible = snapshot.showsWardrobeVerification
         sourceGarmentID = snapshot.sourceGarmentID
         garmentNameSnapshot = snapshot.garmentNameSnapshot
+        garmentBrandSnapshot = snapshot.garmentBrandSnapshot
         garmentCategoryRawSnapshot = snapshot.garmentCategoryRawSnapshot
         garmentColorHexSnapshot = snapshot.garmentColorHexSnapshot
         garmentCutoutImageDataSnapshot = snapshot.garmentCutoutImageDataSnapshot

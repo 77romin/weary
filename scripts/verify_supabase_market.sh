@@ -82,8 +82,12 @@ assert_equal "$http_status" "200" "seller adjusts listing price"
 assert_equal "$(jq -r '.[0].previous_price' "$temp_dir/a-price.json")" "50000" "database records previous price"
 
 http_status="$(request POST "$api_base/rest/v1/market_listing_media" "$a_token" "$temp_dir/media.json" \
-  "$(jq -nc --arg listing "$listing_id" '{listing_id:$listing,storage_path:"market-test/photo-0.jpg",sort_order:0}')")"
+  "$(jq -nc --arg listing "$listing_id" --arg path "$a_id/$listing_id/gallery/0.jpg" '{listing_id:$listing,storage_path:$path,sort_order:0}')")"
 assert_equal "$http_status" "201" "seller adds listing media metadata"
+
+http_status="$(request POST "$api_base/rest/v1/market_listing_media" "$a_token" "$temp_dir/forged-media.json" \
+  "$(jq -nc --arg listing "$listing_id" --arg path "$b_id/$listing_id/gallery/forged.jpg" '{listing_id:$listing,storage_path:$path,sort_order:1}')")"
+assert_equal "$http_status" "403" "seller cannot link another user's storage path"
 
 http_status="$(request POST "$api_base/rest/v1/market_listing_media" "$b_token" "$temp_dir/b-media.json" \
   "$(jq -nc --arg listing "$listing_id" '{listing_id:$listing,storage_path:"market-test/unauthorized.jpg",sort_order:1}')")"
