@@ -134,6 +134,112 @@ struct OutfitFlowTests {
         #expect(post.outfitItems.first?.cutoutImageData == cutout)
     }
 
+    @Test("원격 커뮤니티 스냅샷을 로컬 피드 캐시에 반영한다")
+    func communityPostAppliesServerSnapshot() {
+        let postID = UUID()
+        let authorID = UUID()
+        let outfitID = UUID()
+        let photo = Data([0x01, 0x02])
+        let cutout = Data([0x03, 0x04])
+        let garment = CommunityGarmentSnapshot(
+            id: UUID(),
+            name: "서버 재킷",
+            brand: "WEARy",
+            size: "M",
+            categoryRaw: GarmentCategory.outer.rawValue,
+            colorHex: "8D6748",
+            cutoutImageData: cutout
+        )
+        let snapshot = CommunityFeedPostSnapshot(
+            id: postID,
+            authorID: authorID,
+            authorName: "서버 사용자",
+            authorHandle: "remote.user",
+            authorInitials: "RU",
+            authorAccentHex: "C7F25B",
+            caption: "서버에서 가져온 룩",
+            tags: ["오늘의룩", "서버"],
+            createdAt: Date(timeIntervalSince1970: 300),
+            likeCount: 7,
+            comments: ["친구: 멋져요"],
+            isLiked: true,
+            isSaved: true,
+            isFollowing: true,
+            sourceOutfitID: outfitID,
+            outfitPhotoData: photo,
+            outfitItems: [garment]
+        )
+        let post = CommunityPost(
+            id: postID,
+            authorName: "이전 사용자",
+            authorHandle: "old",
+            authorInitials: "O",
+            caption: "이전 내용"
+        )
+
+        post.applyServerSnapshot(snapshot)
+
+        #expect(post.authorName == "서버 사용자")
+        #expect(post.caption == "서버에서 가져온 룩")
+        #expect(post.tags == ["오늘의룩", "서버"])
+        #expect(post.likeCount == 7)
+        #expect(post.comments == ["친구: 멋져요"])
+        #expect(post.isLiked && post.isSaved && post.isFollowing)
+        #expect(post.sourceOutfitID == outfitID)
+        #expect(post.outfitPhotoData == photo)
+        #expect(post.outfitItems == [garment])
+        #expect(post.isSyncedFromServer == true)
+    }
+
+    @Test("원격 피드 캐시는 최신 서버 목록으로 교체하고 로컬 게시물은 보존한다")
+    @MainActor
+    func remoteFeedCacheReplacesOnlyServerPosts() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: Garment.self, Outfit.self, OutfitItem.self, CommunityPost.self, MarketListing.self,
+            configurations: configuration
+        )
+        let context = container.mainContext
+        let localPost = CommunityPost(
+            authorName: "나", authorHandle: "local", authorInitials: "ME", caption: "로컬 게시물"
+        )
+        let staleRemotePost = CommunityPost(
+            authorName: "서버", authorHandle: "stale", authorInitials: "ST",
+            caption: "삭제된 원격 게시물", isSyncedFromServer: true
+        )
+        context.insert(localPost)
+        context.insert(staleRemotePost)
+        try context.save()
+
+        let remoteID = UUID()
+        let snapshot = CommunityFeedPostSnapshot(
+            id: remoteID,
+            authorID: UUID(),
+            authorName: "새 서버 사용자",
+            authorHandle: "remote",
+            authorInitials: "RS",
+            authorAccentHex: "C7F25B",
+            caption: "최신 원격 게시물",
+            tags: ["오늘의룩"],
+            createdAt: .now,
+            likeCount: 0,
+            comments: [],
+            isLiked: false,
+            isSaved: false,
+            isFollowing: false,
+            sourceOutfitID: nil,
+            outfitPhotoData: nil,
+            outfitItems: []
+        )
+
+        try CommunityFeedCacheStore.replaceRemoteWindow(with: [snapshot], in: context)
+
+        let posts = try context.fetch(FetchDescriptor<CommunityPost>())
+        #expect(posts.contains { $0.id == localPost.id })
+        #expect(posts.contains { $0.id == remoteID && $0.isSyncedFromServer == true })
+        #expect(!posts.contains { $0.id == staleRemotePost.id })
+    }
+
     @Test("착장 아이템은 카테고리 기본 순서와 게시자 지정 순서를 따른다")
     func outfitItemsSupportDefaultAndCustomOrder() {
         let outfit = Outfit(wornAt: .now)

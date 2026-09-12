@@ -26,6 +26,7 @@
 		6C3EDF65005EB3E3434A6D40 /* GarmentArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8201B35CDC2D7F227B435F /* GarmentArtwork.swift */; };
 		730AFC137E610F382521084B /* MeetingPlacePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA76ACD8AA13CB84801A550D /* MeetingPlacePickerView.swift */; };
 		73DFF9DD177F48648ECF99C3 /* Garment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95B430ABCABDD13607100A /* Garment.swift */; };
+		751E9369D68885EF00CE8056 /* CommunityFeedRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2312D75F5627C5342577B5 /* CommunityFeedRepository.swift */; };
 		7C06A6D65488CCA798BC9143 /* WEARyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE9CF6B3115EC06903CC4CD /* WEARyTheme.swift */; };
 		8ACDE1A80D759B41221FFC4C /* WEARyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7D1E359601AB7551718EEA /* WEARyUITests.swift */; };
 		8FEE8FB4FB02C415342E37D2 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54AD0DF25893AE52312C3C0B /* OnboardingView.swift */; };
@@ -78,6 +79,7 @@
 		77CCB18CF598C0B07C2C85CA /* SampleDataSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleDataSeeder.swift; sourceTree = "<group>"; };
 		7C7D1E359601AB7551718EEA /* WEARyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WEARyUITests.swift; sourceTree = "<group>"; };
 		7EABE584631562BA3546A6F4 /* WardrobeInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardrobeInsightsView.swift; sourceTree = "<group>"; };
+		7F2312D75F5627C5342577B5 /* CommunityFeedRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityFeedRepository.swift; sourceTree = "<group>"; };
 		85EDC6B33EF1A9670BF5CBCD /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
 		86B5787FE490CB938E4B6D86 /* WEARy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WEARy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B95B430ABCABDD13607100A /* Garment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Garment.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 		7AE90E7CC3D4CF65DC2A7F7B /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				7F2312D75F5627C5342577B5 /* CommunityFeedRepository.swift */,
 				AA2FDFB74E5CF511FA35BC26 /* GarmentCutoutService.swift */,
 				6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */,
 				54A4B8F85505A05A4CA45B18 /* OutfitRecordService.swift */,
@@ -451,6 +454,7 @@
 			files = (
 				2DA6602E738816C8B0AB46CC /* CameraPicker.swift in Sources */,
 				EFC26848D803CAA43BD977E9 /* CaptureView.swift in Sources */,
+				751E9369D68885EF00CE8056 /* CommunityFeedRepository.swift in Sources */,
 				3E8F63BE86D60E5B057004D1 /* CommunityPost.swift in Sources */,
 				AAB09A3C8C75C4DE40D1C517 /* FeedView.swift in Sources */,
 				73DFF9DD177F48648ECF99C3 /* Garment.swift in Sources */,

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-struct CommunityGarmentSnapshot: Codable, Identifiable, Equatable {
+struct CommunityGarmentSnapshot: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
     let name: String
     let brand: String
@@ -18,6 +18,24 @@ struct CommunityGarmentSnapshot: Codable, Identifiable, Equatable {
         categoryRaw = garment.categoryRaw
         colorHex = garment.colorHex
         cutoutImageData = garment.cutoutImageData
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        brand: String,
+        size: String,
+        categoryRaw: String,
+        colorHex: String,
+        cutoutImageData: Data?
+    ) {
+        self.id = id
+        self.name = name
+        self.brand = brand
+        self.size = size
+        self.categoryRaw = categoryRaw
+        self.colorHex = colorHex
+        self.cutoutImageData = cutoutImageData
     }
 
     var category: GarmentCategory {
@@ -42,6 +60,7 @@ final class CommunityPost {
     var accentHex: String
     var sourceOutfitID: UUID?
     var outfitWornAt: Date?
+    var isSyncedFromServer: Bool?
     @Attribute(.externalStorage) var outfitPhotoData: Data?
     @Attribute(.externalStorage) var outfitItemsData: Data?
 
@@ -59,7 +78,8 @@ final class CommunityPost {
         isSaved: Bool = false,
         isFollowing: Bool = false,
         accentHex: String = "A7B9CE",
-        outfit: Outfit? = nil
+        outfit: Outfit? = nil,
+        isSyncedFromServer: Bool = false
     ) {
         self.id = id
         self.authorName = authorName
@@ -74,6 +94,7 @@ final class CommunityPost {
         self.isSaved = isSaved
         self.isFollowing = isFollowing
         self.accentHex = accentHex
+        self.isSyncedFromServer = isSyncedFromServer
         captureSnapshot(from: outfit)
     }
 
@@ -104,5 +125,24 @@ final class CommunityPost {
         outfitPhotoData = outfit.photoData
         let snapshots = outfit.orderedItems.compactMap(\.garment).map(CommunityGarmentSnapshot.init)
         outfitItemsData = try? PropertyListEncoder().encode(snapshots)
+    }
+
+    func applyServerSnapshot(_ snapshot: CommunityFeedPostSnapshot) {
+        authorName = snapshot.authorName
+        authorHandle = snapshot.authorHandle
+        authorInitials = snapshot.authorInitials
+        caption = snapshot.caption
+        tags = snapshot.tags
+        createdAt = snapshot.createdAt
+        likeCount = snapshot.likeCount
+        commentsRaw = snapshot.comments.joined(separator: "\n")
+        isLiked = snapshot.isLiked
+        isSaved = snapshot.isSaved
+        isFollowing = snapshot.isFollowing
+        accentHex = snapshot.authorAccentHex
+        sourceOutfitID = snapshot.sourceOutfitID
+        outfitPhotoData = snapshot.outfitPhotoData
+        outfitItemsData = try? PropertyListEncoder().encode(snapshot.outfitItems)
+        isSyncedFromServer = true
     }
 }

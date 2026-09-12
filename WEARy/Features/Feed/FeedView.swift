@@ -8,6 +8,7 @@ struct FeedView: View {
     @State private var showingComposer = false
     @State private var isRefreshing = false
     @State private var refreshCount = 0
+    @State private var remoteSyncError: String?
 
     private let topics = ["전체", "오늘의 룩", "미니멀", "빈티지", "출근 룩", "컬러 포인트"]
     private let feedTopAnchor = "feed.top"
@@ -95,6 +96,9 @@ struct FeedView: View {
             .sheet(isPresented: $showingComposer) {
                 CreateCommunityPostView()
             }
+            .task {
+                await syncRemoteFeed()
+            }
         }
     }
 
@@ -110,8 +114,25 @@ struct FeedView: View {
         isRefreshing = true
         refreshCount += 1
         SampleDataSeeder.seedIfNeeded(in: modelContext)
-        try? await Task.sleep(for: .milliseconds(650))
+        await syncRemoteFeed()
         isRefreshing = false
+    }
+
+    @MainActor
+    private func syncRemoteFeed() async {
+        do {
+            let remotePosts = try await SupabaseCommunityFeedRepository.shared.fetchFeed(limit: 30)
+            try CommunityFeedCacheStore.replaceRemoteWindow(with: remotePosts, in: modelContext)
+            remoteSyncError = nil
+#if DEBUG
+            print("원격 피드 동기화 완료: \(remotePosts.count)개")
+#endif
+        } catch {
+            remoteSyncError = error.localizedDescription
+#if DEBUG
+            print("원격 피드 동기화 실패, 로컬 피드를 유지합니다: \(error.localizedDescription)")
+#endif
+        }
     }
 
     private var styleTopics: some View {
