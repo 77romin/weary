@@ -425,6 +425,9 @@ sequenceDiagram
    - 2026-09-12: `posts`, `post_media`, `post_items`, `comments`, `post_likes`, `bookmarks`, `follows`와 RLS를 개발 프로젝트에 적용했다.
    - 두 익명 사용자로 게시물 가시성, 작성자 권한, 댓글·좋아요·북마크·팔로우 정책을 검증했다.
 4. 공개 이미지 Storage bucket과 RLS 정책을 구성한다.
+   - 2026-09-12: 10MB 이미지 전용 private `community-media` 버킷을 구성했다.
+   - 객체 경로는 `사용자ID/게시물ID/파일명`으로 제한하고 게시물 공개 범위가 확인된 경우에만 다른 사용자가 읽을 수 있다.
+   - 소유자 업로드·조회·삭제, 공개 게시물 이미지 조회, 비공개 이미지 및 타인 변경 차단을 실제 Storage API로 검증했다.
 5. 피드 페이지네이션, 게시물 작성, 좋아요, 댓글, 저장과 팔로우를 구현한다.
 6. 신고, 차단, soft delete와 최소 운영 도구를 함께 구현한다.
 7. rate limit, 관측성과 백업·복원 절차를 적용한다.

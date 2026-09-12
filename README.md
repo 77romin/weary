@@ -117,6 +117,8 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 - 인증 사용자만 프로필을 읽고 본인 프로필만 수정할 수 있는 RLS
 - 게시물, 이미지 메타데이터, 아이템 스냅샷, 댓글, 좋아요, 북마크와 팔로우용 PostgreSQL 스키마
 - 공개·팔로워·비공개 게시물 가시성, 작성자 수정 권한과 개인 북마크를 보호하는 RLS
+- 공개 착장과 아이템 이미지를 위한 private `community-media` Storage 버킷
+- 사용자·게시물 경로 소유권과 게시물 공개 범위를 함께 검사하는 Storage RLS
 
 커뮤니티 서버 스키마는 구성됐지만 현재 피드 UI는 발표 안정성을 위해 아직 로컬 SwiftData를 사용합니다. 다음 단계에서 Repository 단위로 서버 읽기·쓰기를 연결합니다.
 
@@ -204,6 +206,7 @@ Supabase 커뮤니티 권한은 연결된 개발 프로젝트를 대상으로 �
 
 ```bash
 scripts/verify_supabase_community.sh
+scripts/verify_supabase_storage.sh
 ```
 
 ## TO-DO-LIST
@@ -325,7 +328,11 @@ scripts/verify_supabase_community.sh
   - [x] 공개·팔로워·비공개 게시물 접근 정책 검증
   - [x] 작성자 전용 수정·삭제와 타 사용자 변조 차단 검증
   - [x] 댓글·좋아요·팔로우 공개 관계와 북마크 비공개 정책 검증
-- [ ] 커뮤니티 이미지 Storage 버킷과 업로드 정책 구현
+- [x] 커뮤니티 이미지 Storage 버킷과 업로드 정책 구현
+  - [x] private `community-media` 버킷과 10MB·이미지 MIME 제한 적용
+  - [x] `사용자ID/게시물ID/파일명` 경로 소유권 정책 적용
+  - [x] 공개 게시물 이미지 조회와 비공개·미연결 이미지 차단 검증
+  - [x] 타 사용자 업로드·삭제와 잘못된 MIME 차단 검증
 - [ ] 로컬 커뮤니티 Mock을 Supabase Repository로 단계적 교체
 - [ ] 커뮤니티 신고, 차단, 콘텐츠 운영 정책 설계
 - [ ] 중고거래 결제, 배송, 정산 및 분쟁 정책 설계
