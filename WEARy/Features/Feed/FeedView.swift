@@ -9,9 +9,14 @@ struct FeedView: View {
     @State private var isRefreshing = false
     @State private var refreshCount = 0
     @State private var remoteSyncError: String?
+    @State private var remoteCursor: CommunityFeedCursor?
+    @State private var hasMoreRemotePosts = false
+    @State private var isLoadingMore = false
+    @State private var loadedRemoteLimit = 15
 
     private let topics = ["전체", "오늘의 룩", "미니멀", "빈티지", "출근 룩", "컬러 포인트"]
     private let feedTopAnchor = "feed.top"
+    private let remotePageSize = 15
 
     private var filteredPosts: [CommunityPost] {
         guard selectedTopic != "전체" else { return posts }
@@ -51,6 +56,13 @@ struct FeedView: View {
                                         }
                                         .buttonStyle(.plain)
                                     }
+                                }
+                                if hasMoreRemotePosts {
+                                    ProgressView("이전 스타일 불러오는 중…")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 18)
+                                        .task { await loadMoreRemotePosts() }
+                                        .accessibilityIdentifier("feed.loadMore")
                                 }
                             }
                             .padding(18)
@@ -97,7 +109,7 @@ struct FeedView: View {
                 CreateCommunityPostView()
             }
             .task {
-                await syncRemoteFeed()
+                await runRemoteFeed()
             }
         }
     }
@@ -114,18 +126,23 @@ struct FeedView: View {
         isRefreshing = true
         refreshCount += 1
         SampleDataSeeder.seedIfNeeded(in: modelContext)
-        await syncRemoteFeed()
+        await refreshRemoteWindow()
         isRefreshing = false
     }
 
     @MainActor
-    private func syncRemoteFeed() async {
+    private func refreshRemoteWindow() async {
         do {
-            let remotePosts = try await SupabaseCommunityFeedRepository.shared.fetchFeed(limit: 30)
-            try CommunityFeedCacheStore.replaceRemoteWindow(with: remotePosts, in: modelContext)
+            let page = try await SupabaseCommunityFeedRepository.shared.fetchPage(
+                before: nil,
+                limit: loadedRemoteLimit
+            )
+            try CommunityFeedCacheStore.replaceRemoteWindow(with: page.posts, in: modelContext)
+            remoteCursor = page.nextCursor
+            hasMoreRemotePosts = page.hasMore
             remoteSyncError = nil
 #if DEBUG
-            print("원격 피드 동기화 완료: \(remotePosts.count)개")
+            print("원격 피드 동기화 완료: \(page.posts.count)개")
 #endif
         } catch {
             remoteSyncError = error.localizedDescription
@@ -133,6 +150,53 @@ struct FeedView: View {
             print("원격 피드 동기화 실패, 로컬 피드를 유지합니다: \(error.localizedDescription)")
 #endif
         }
+    }
+
+    @MainActor
+    private func loadMoreRemotePosts() async {
+        guard hasMoreRemotePosts, !isLoadingMore, let remoteCursor else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        do {
+            let page = try await SupabaseCommunityFeedRepository.shared.fetchPage(
+                before: remoteCursor,
+                limit: remotePageSize
+            )
+            try CommunityFeedCacheStore.mergeRemotePage(page.posts, in: modelContext)
+            self.remoteCursor = page.nextCursor
+            hasMoreRemotePosts = page.hasMore
+            loadedRemoteLimit += page.posts.count
+            remoteSyncError = nil
+        } catch {
+            remoteSyncError = error.localizedDescription
+#if DEBUG
+            print("원격 피드 다음 페이지 로드 실패: \(error.localizedDescription)")
+#endif
+        }
+    }
+
+    private func runRemoteFeed() async {
+        await refreshRemoteWindow()
+        guard !Task.isCancelled else { return }
+
+        do {
+            let events = try await SupabaseCommunityFeedRealtimeRepository.shared.events()
+            for await _ in events {
+                guard !Task.isCancelled else { break }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { break }
+                await refreshRemoteWindow()
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            await MainActor.run { remoteSyncError = error.localizedDescription }
+#if DEBUG
+            print("피드 Realtime 구독 실패: \(error.localizedDescription)")
+#endif
+        }
+
+        await SupabaseCommunityFeedRealtimeRepository.shared.stop()
     }
 
     private var styleTopics: some View {
@@ -512,17 +576,32 @@ private struct CreateCommunityPostView: View {
             do {
                 let postID = try await SupabaseCommunityPostPublisher.shared.publish(draft)
                 selectedOutfit.isPublished = true
-                modelContext.insert(CommunityPost(
-                    id: postID,
-                    authorName: authentication.displayName,
-                    authorHandle: "my.weary",
-                    authorInitials: "ME",
-                    caption: trimmedCaption,
-                    tags: normalizedTags,
-                    accentHex: "C7F25B",
-                    outfit: selectedOutfit,
-                    isSyncedFromServer: true
-                ))
+                let publishedID = postID
+                var descriptor = FetchDescriptor<CommunityPost>(
+                    predicate: #Predicate { $0.id == publishedID }
+                )
+                descriptor.fetchLimit = 1
+                if let cachedPost = try? modelContext.fetch(descriptor).first {
+                    cachedPost.authorName = authentication.displayName
+                    cachedPost.authorHandle = "my.weary"
+                    cachedPost.authorInitials = AuthenticationStore.initials(for: authentication.displayName)
+                    cachedPost.caption = trimmedCaption
+                    cachedPost.tags = normalizedTags
+                    cachedPost.captureSnapshot(from: selectedOutfit)
+                    cachedPost.isSyncedFromServer = true
+                } else {
+                    modelContext.insert(CommunityPost(
+                        id: postID,
+                        authorName: authentication.displayName,
+                        authorHandle: "my.weary",
+                        authorInitials: AuthenticationStore.initials(for: authentication.displayName),
+                        caption: trimmedCaption,
+                        tags: normalizedTags,
+                        accentHex: "C7F25B",
+                        outfit: selectedOutfit,
+                        isSyncedFromServer: true
+                    ))
+                }
                 do {
                     try modelContext.save()
                 } catch {

@@ -241,6 +241,55 @@ struct OutfitFlowTests {
         #expect(!posts.contains { $0.id == staleRemotePost.id })
     }
 
+    @Test("다음 원격 페이지를 합칠 때 기존 원격·로컬 게시물을 보존한다")
+    @MainActor
+    func remoteFeedCacheMergesAdditionalPages() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: Garment.self, Outfit.self, OutfitItem.self, CommunityPost.self, MarketListing.self,
+            configurations: configuration
+        )
+        let context = container.mainContext
+        let localPost = CommunityPost(
+            authorName: "나", authorHandle: "local", authorInitials: "ME", caption: "로컬 게시물"
+        )
+        let existingRemotePost = CommunityPost(
+            authorName: "서버", authorHandle: "first", authorInitials: "FR",
+            caption: "첫 페이지", isSyncedFromServer: true
+        )
+        context.insert(localPost)
+        context.insert(existingRemotePost)
+        try context.save()
+
+        let nextRemoteID = UUID()
+        let snapshot = CommunityFeedPostSnapshot(
+            id: nextRemoteID,
+            authorID: UUID(),
+            authorName: "다음 서버 사용자",
+            authorHandle: "next",
+            authorInitials: "NX",
+            authorAccentHex: "C7F25B",
+            caption: "다음 페이지",
+            tags: [],
+            createdAt: .now,
+            likeCount: 0,
+            comments: [],
+            isLiked: false,
+            isSaved: false,
+            isFollowing: false,
+            sourceOutfitID: nil,
+            outfitPhotoData: nil,
+            outfitItems: []
+        )
+
+        try CommunityFeedCacheStore.mergeRemotePage([snapshot], in: context)
+
+        let posts = try context.fetch(FetchDescriptor<CommunityPost>())
+        #expect(posts.contains { $0.id == localPost.id })
+        #expect(posts.contains { $0.id == existingRemotePost.id })
+        #expect(posts.contains { $0.id == nextRemoteID && $0.isSyncedFromServer == true })
+    }
+
     @Test("착장 아이템은 카테고리 기본 순서와 게시자 지정 순서를 따른다")
     func outfitItemsSupportDefaultAndCustomOrder() {
         let outfit = Outfit(wornAt: .now)

@@ -1,4 +1,5 @@
 import Foundation
+import Supabase
 import Testing
 @testable import WEARy
 
@@ -135,6 +136,122 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("원격 피드를 커서로 나누어 읽으면 게시물이 중복되지 않는다")
+    func readsRemoteFeedWithCursorPagination() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else {
+            return
+        }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+
+        let userID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let baseDate = Date().addingTimeInterval(30)
+        let rows = (0..<4).map { index in
+            IntegrationPostInsert(
+                id: UUID(),
+                authorID: userID,
+                caption: "Cursor integration \(index)",
+                visibility: "public",
+                createdAt: baseDate.addingTimeInterval(Double(index))
+            )
+        }
+        try await client.from("posts").insert(rows).execute()
+
+        var capturedError: Error?
+        do {
+            let firstPage = try await SupabaseCommunityFeedRepository.shared.fetchPage(
+                before: nil,
+                limit: 2
+            )
+            let cursor = try #require(firstPage.nextCursor)
+            let secondPage = try await SupabaseCommunityFeedRepository.shared.fetchPage(
+                before: cursor,
+                limit: 2
+            )
+            let expectedIDs = rows.reversed().map(\.id)
+
+            #expect(firstPage.posts.map(\.id) == Array(expectedIDs.prefix(2)))
+            #expect(secondPage.posts.map(\.id) == Array(expectedIDs.dropFirst(2)))
+            #expect(firstPage.hasMore)
+            #expect(Set(firstPage.posts.map(\.id)).isDisjoint(with: secondPage.posts.map(\.id)))
+        } catch {
+            capturedError = error
+        }
+
+        for row in rows {
+            _ = try? await client
+                .from("posts")
+                .delete()
+                .eq("id", value: row.id.uuidString)
+                .execute()
+        }
+
+        if let capturedError { throw capturedError }
+    }
+
+    @Test("새 커뮤니티 게시물은 Realtime 변경 이벤트를 발생시킨다")
+    func receivesRealtimeEventForNewPost() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else {
+            return
+        }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+
+        let userID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let post = IntegrationPostInsert(
+            id: UUID(),
+            authorID: userID,
+            caption: "Realtime integration \(UUID().uuidString)",
+            visibility: "public",
+            createdAt: .now
+        )
+        let events = try await SupabaseCommunityFeedRealtimeRepository.shared.events()
+        let eventTask = Task { await receivesFirstEvent(from: events, timeout: .seconds(8)) }
+
+        var capturedError: Error?
+        var receivedEvent = false
+        do {
+            try await client.from("posts").insert(post).execute()
+            receivedEvent = await eventTask.value
+            #expect(receivedEvent)
+        } catch {
+            capturedError = error
+        }
+
+        eventTask.cancel()
+        await SupabaseCommunityFeedRealtimeRepository.shared.stop()
+        _ = try? await client
+            .from("posts")
+            .delete()
+            .eq("id", value: post.id.uuidString)
+            .execute()
+
+        if let capturedError { throw capturedError }
+    }
+
+    private func receivesFirstEvent(
+        from events: AsyncStream<Void>,
+        timeout: Duration
+    ) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in events { return true }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return false
+            }
+            let firstResult = await group.next() ?? false
+            group.cancelAll()
+            return firstResult
+        }
+    }
+
     private func supabaseConfiguration() throws -> TestSupabaseConfiguration {
         guard
             let urlString = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
@@ -208,6 +325,20 @@ private struct TestAnonymousSession: Decodable, Sendable {
 
 private struct TestAnonymousUser: Decodable, Sendable {
     let id: UUID
+}
+
+private struct IntegrationPostInsert: Encodable, Sendable {
+    let id: UUID
+    let authorID: UUID
+    let caption: String
+    let visibility: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, caption, visibility
+        case authorID = "author_id"
+        case createdAt = "created_at"
+    }
 }
 
 private enum TestIntegrationError: Error {

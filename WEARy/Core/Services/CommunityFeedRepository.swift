@@ -3,7 +3,18 @@ import Supabase
 import SwiftData
 
 protocol CommunityFeedRepository: Sendable {
-    func fetchFeed(limit: Int) async throws -> [CommunityFeedPostSnapshot]
+    func fetchPage(before cursor: CommunityFeedCursor?, limit: Int) async throws -> CommunityFeedPage
+}
+
+struct CommunityFeedCursor: Equatable, Sendable {
+    let createdAt: Date
+    let id: UUID
+}
+
+struct CommunityFeedPage: Sendable {
+    let posts: [CommunityFeedPostSnapshot]
+    let nextCursor: CommunityFeedCursor?
+    let hasMore: Bool
 }
 
 struct CommunityFeedPostSnapshot: Identifiable, Sendable {
@@ -32,12 +43,20 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
     private let bucket = "community-media"
 
     func fetchFeed(limit: Int = 30) async throws -> [CommunityFeedPostSnapshot] {
+        try await fetchPage(before: nil, limit: limit).posts
+    }
+
+    func fetchPage(
+        before cursor: CommunityFeedCursor? = nil,
+        limit: Int = 15
+    ) async throws -> CommunityFeedPage {
         guard let client = SupabaseService.client else {
             throw SupabaseServiceError.missingConfiguration
         }
 
         let currentUserID = try await SupabaseSessionManager.shared.authenticatedUserID()
-        let records: [RemotePostRecord] = try await client
+        let safeLimit = min(max(limit, 1), 100)
+        var query = client
             .from("posts")
             .select(
                 """
@@ -56,10 +75,25 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
                 """
             )
             .eq("status", value: "active")
+            .neq("visibility", value: "private")
+
+        if let cursor {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let timestamp = formatter.string(from: cursor.createdAt)
+            query = query.or(
+                "created_at.lt.\(timestamp),and(created_at.eq.\(timestamp),id.lt.\(cursor.id.uuidString))"
+            )
+        }
+
+        let records: [RemotePostRecord] = try await query
             .order("created_at", ascending: false)
-            .limit(limit)
+            .order("id", ascending: false)
+            .limit(safeLimit + 1)
             .execute()
             .value
+        let pageRecords = Array(records.prefix(safeLimit))
+        let hasMore = records.count > safeLimit
 
         let followingRecords: [RemoteFollowRecord] = try await client
             .from("follows")
@@ -71,9 +105,9 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
         let followingIDs = Set(followingRecords.map(\.followingID))
 
         var snapshots: [CommunityFeedPostSnapshot] = []
-        snapshots.reserveCapacity(records.count)
+        snapshots.reserveCapacity(pageRecords.count)
 
-        for record in records {
+        for record in pageRecords {
             let isCurrentUser = record.authorID == currentUserID
             let mediaPath = record.media.min(by: { $0.sortOrder < $1.sortOrder })?.storagePath
             let photoData = await download(path: mediaPath, using: client)
@@ -117,7 +151,10 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
             ))
         }
 
-        return snapshots
+        let nextCursor = hasMore ? pageRecords.last.map {
+            CommunityFeedCursor(createdAt: $0.createdAt, id: $0.id)
+        } : nil
+        return CommunityFeedPage(posts: snapshots, nextCursor: nextCursor, hasMore: hasMore)
     }
 
     private func download(path: String?, using client: SupabaseClient) async -> Data? {
@@ -243,31 +280,117 @@ enum CommunityFeedCacheStore {
         let cachedByID = Dictionary(uniqueKeysWithValues: cachedRemotePosts.map { ($0.id, $0) })
         let receivedIDs = Set(snapshots.map(\.id))
 
-        for snapshot in snapshots {
-            if let cachedPost = cachedByID[snapshot.id] {
-                cachedPost.applyServerSnapshot(snapshot)
-            } else {
-                let post = CommunityPost(
-                    id: snapshot.id,
-                    authorName: snapshot.authorName,
-                    authorHandle: snapshot.authorHandle,
-                    authorInitials: snapshot.authorInitials,
-                    caption: snapshot.caption,
-                    tags: snapshot.tags,
-                    createdAt: snapshot.createdAt,
-                    accentHex: snapshot.authorAccentHex,
-                    isSyncedFromServer: true,
-                    serverAuthorID: snapshot.authorID
-                )
-                post.applyServerSnapshot(snapshot)
-                modelContext.insert(post)
-            }
-        }
+        upsert(snapshots, cachedByID: cachedByID, in: modelContext)
 
         for cachedPost in cachedRemotePosts where !receivedIDs.contains(cachedPost.id) {
             modelContext.delete(cachedPost)
         }
 
         try modelContext.save()
+    }
+
+    static func mergeRemotePage(
+        _ snapshots: [CommunityFeedPostSnapshot],
+        in modelContext: ModelContext
+    ) throws {
+        let cachedRemotePosts = try modelContext.fetch(
+            FetchDescriptor<CommunityPost>(predicate: #Predicate { $0.isSyncedFromServer == true })
+        )
+        let cachedByID = Dictionary(uniqueKeysWithValues: cachedRemotePosts.map { ($0.id, $0) })
+        upsert(snapshots, cachedByID: cachedByID, in: modelContext)
+        try modelContext.save()
+    }
+
+    private static func upsert(
+        _ snapshots: [CommunityFeedPostSnapshot],
+        cachedByID: [UUID: CommunityPost],
+        in modelContext: ModelContext
+    ) {
+        for snapshot in snapshots {
+            if let cachedPost = cachedByID[snapshot.id] {
+                cachedPost.applyServerSnapshot(snapshot)
+                continue
+            }
+
+            let post = CommunityPost(
+                id: snapshot.id,
+                authorName: snapshot.authorName,
+                authorHandle: snapshot.authorHandle,
+                authorInitials: snapshot.authorInitials,
+                caption: snapshot.caption,
+                tags: snapshot.tags,
+                createdAt: snapshot.createdAt,
+                accentHex: snapshot.authorAccentHex,
+                isSyncedFromServer: true,
+                serverAuthorID: snapshot.authorID
+            )
+            post.applyServerSnapshot(snapshot)
+            modelContext.insert(post)
+        }
+    }
+}
+
+actor SupabaseCommunityFeedRealtimeRepository {
+    static let shared = SupabaseCommunityFeedRealtimeRepository()
+
+    private var channel: RealtimeChannelV2?
+    private var subscriptions: [RealtimeSubscription] = []
+    private var continuation: AsyncStream<Void>.Continuation?
+
+    func events() async throws -> AsyncStream<Void> {
+        await stop()
+        guard let client = SupabaseService.client else {
+            throw SupabaseServiceError.missingConfiguration
+        }
+        _ = try await SupabaseSessionManager.shared.authenticatedUserID()
+
+        let (stream, continuation) = AsyncStream<Void>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        let channel = client.channel("community-feed-\(UUID().uuidString)")
+        let tables = [
+            "profiles",
+            "posts",
+            "post_media",
+            "post_items",
+            "comments",
+            "post_likes",
+            "bookmarks",
+            "follows",
+        ]
+
+        subscriptions = tables.map { table in
+            channel.onPostgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: table
+            ) { _ in
+                continuation.yield()
+            }
+        }
+        self.channel = channel
+        self.continuation = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.stop() }
+        }
+
+        do {
+            try await channel.subscribeWithError()
+            return stream
+        } catch {
+            await stop()
+            throw error
+        }
+    }
+
+    func stop() async {
+        continuation?.finish()
+        continuation = nil
+        subscriptions.forEach { $0.cancel() }
+        subscriptions = []
+        if let channel, let client = SupabaseService.client {
+            await client.removeChannel(channel)
+        }
+        channel = nil
     }
 }
