@@ -475,6 +475,123 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("구매자와 판매자가 매물 채팅을 주고받는다")
+    func exchangesMarketChatMessages() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        guard SupabaseService.client != nil else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+        let configuration = try supabaseConfiguration()
+        let seller = try await createAnonymousSession(configuration: configuration)
+        let intruder = try await createAnonymousSession(configuration: configuration)
+        let buyerID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let listingID = UUID()
+        let marker = "Market chat integration \(UUID().uuidString)"
+
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/market_listings",
+            configuration: configuration,
+            token: seller.token,
+            body: [
+                "id": listingID.uuidString,
+                "seller_id": seller.userID.uuidString,
+                "title": marker,
+                "description": "채팅 통합 검증",
+                "price": 30_000,
+                "brand_snapshot": "WEARy",
+                "category_snapshot": GarmentCategory.top.rawValue,
+                "size_snapshot": "M",
+                "color_hex_snapshot": "8899AA",
+                "condition": "excellent",
+                "status": "active",
+            ]
+        )
+
+        let chat = SupabaseMarketChatRepository.shared
+        var capturedError: Error?
+        do {
+            #expect(try await chat.findBuyerConversation(listingID: listingID) == nil)
+            let conversationID = try await chat.getOrCreateBuyerConversation(listingID: listingID)
+            #expect(try await chat.getOrCreateBuyerConversation(listingID: listingID) == conversationID)
+
+            let buyerMessage = "구매자 메시지 \(UUID().uuidString)"
+            try await chat.sendMessage(conversationID: conversationID, body: buyerMessage)
+            var messages = try await chat.fetchMessages(conversationID: conversationID)
+            #expect(messages.count == 1)
+            #expect(messages.first?.senderID == buyerID)
+            #expect(messages.first?.body == buyerMessage)
+
+            let sellerConversationData = try await restRequest(
+                method: "GET",
+                path: "/rest/v1/market_conversations?listing_id=eq.\(listingID.uuidString)&select=id",
+                configuration: configuration,
+                token: seller.token
+            )
+            let sellerConversations = try JSONSerialization.jsonObject(with: sellerConversationData) as? [[String: Any]]
+            #expect(sellerConversations?.count == 1)
+
+            let hiddenConversationData = try await restRequest(
+                method: "GET",
+                path: "/rest/v1/market_conversations?id=eq.\(conversationID.uuidString)&select=id",
+                configuration: configuration,
+                token: intruder.token
+            )
+            let hiddenConversations = try JSONSerialization.jsonObject(with: hiddenConversationData) as? [[String: Any]]
+            #expect(hiddenConversations?.isEmpty == true)
+
+            var intruderMessageWasRejected = false
+            do {
+                try await restRequest(
+                    method: "POST",
+                    path: "/rest/v1/market_messages",
+                    configuration: configuration,
+                    token: intruder.token,
+                    body: [
+                        "conversation_id": conversationID.uuidString,
+                        "sender_id": intruder.userID.uuidString,
+                        "body": "접근하면 안 되는 메시지",
+                    ]
+                )
+            } catch {
+                intruderMessageWasRejected = true
+            }
+            #expect(intruderMessageWasRejected)
+
+            let events = try await SupabaseMarketMessageRealtimeRepository.shared.events()
+            let sellerMessage = "판매자 답장 \(UUID().uuidString)"
+            try await restRequest(
+                method: "POST",
+                path: "/rest/v1/market_messages",
+                configuration: configuration,
+                token: seller.token,
+                body: [
+                    "conversation_id": conversationID.uuidString,
+                    "sender_id": seller.userID.uuidString,
+                    "body": sellerMessage,
+                ]
+            )
+            #expect(await receivesFirstEvent(from: events, timeout: .seconds(5)))
+
+            messages = try await chat.fetchMessages(conversationID: conversationID)
+            #expect(messages.count == 2)
+            #expect(messages.last?.senderID == seller.userID)
+            #expect(messages.last?.body == sellerMessage)
+        } catch {
+            capturedError = error
+        }
+
+        await SupabaseMarketMessageRealtimeRepository.shared.stop()
+        _ = try? await restRequest(
+            method: "DELETE",
+            path: "/rest/v1/market_listings?id=eq.\(listingID.uuidString)",
+            configuration: configuration,
+            token: seller.token
+        )
+        if let capturedError { throw capturedError }
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration

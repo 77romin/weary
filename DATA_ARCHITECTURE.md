@@ -88,7 +88,9 @@ flowchart LR
 - 작성은 숨김 초안을 먼저 만들고 업로드 완료 후 `replace_market_listing` RPC에서 매물·사진 순서·선택적 인증을 한 트랜잭션으로 공개한다. 실패한 초안과 파일은 보상 삭제한다.
 - 원격 매물의 관심 등록·해제는 복합 기본 키 기반 upsert/delete로 멱등하게 저장하며, 요청 실패 시 optimistic 화면 상태를 되돌린다.
 - 매물, 미디어, 인증, 관심과 판매자 프로필의 Realtime 변경을 감지하면 원격 마켓 캐시를 다시 동기화한다.
-- 발표용 로컬 샘플은 기존 SwiftData 동작을 유지한다. 상품 단위 채팅이 다음 마켓 서버 단계다.
+- `market_conversations`는 매물과 구매자 조합을 유일하게 유지하고 판매자는 자기 매물의 대화만, 구매자는 자신의 대화만 조회한다.
+- `market_messages`는 해당 대화의 구매자와 매물 판매자만 읽고 작성할 수 있으며 메시지가 추가되면 대화의 최근 활동 시각을 갱신한다.
+- 채팅 목록과 열린 대화는 Realtime 이벤트를 받아 다시 동기화한다. 발표용 로컬 샘플은 기존 SwiftData Mock 대화를 유지한다.
 
 ## 3. 개인 iCloud 영역 ERD
 
@@ -182,7 +184,7 @@ erDiagram
 
 ## 4. 서비스 서버 ERD
 
-이 ERD는 장기 도메인 전체를 표현한다. 첫 서버 MVP에는 프로필, 게시물과 반응만 구현하고, 판매 상품과 채팅은 커뮤니티 안정화 후 순차적으로 추가한다.
+이 ERD는 장기 도메인 전체를 표현한다. 현재 서버 MVP에는 프로필, 커뮤니티, 판매 상품과 상품 단위 텍스트 채팅까지 구현되어 있으며 결제·배송·운영 도메인은 이후 단계로 둔다.
 
 ```mermaid
 erDiagram
@@ -203,8 +205,7 @@ erDiagram
     LISTING ||--o| LISTING_VERIFICATION : optionally_proves
     LISTING ||--o{ LISTING_FAVORITE : receives
     USER ||--o{ LISTING_FAVORITE : creates
-    CONVERSATION ||--o{ CONVERSATION_MEMBER : includes
-    USER ||--o{ CONVERSATION_MEMBER : joins
+    USER ||--o{ CONVERSATION : buys
     CONVERSATION ||--o{ MESSAGE : contains
     USER ||--o{ MESSAGE : sends
     LISTING ||--o{ CONVERSATION : concerns
@@ -343,15 +344,9 @@ erDiagram
     CONVERSATION {
         uuid id PK
         uuid listing_id FK
+        uuid buyer_id FK
         datetime created_at
         datetime last_message_at
-    }
-
-    CONVERSATION_MEMBER {
-        uuid conversation_id PK_FK
-        uuid user_id PK_FK
-        datetime last_read_at
-        datetime left_at
     }
 
     MESSAGE {
@@ -494,6 +489,8 @@ sequenceDiagram
    - 2026-09-12: 관심 등록·해제 Repository와 마켓 Realtime 구독을 연결하고 실제 이벤트 수신까지 검증했다.
    - 매물별 다중 이미지 순서와 판매자의 옷장 데이터 공개 동의를 함께 저장한다.
 2. 상품 단위 1:1 대화와 채팅 기반 거래 합의를 구현한다.
+   - 2026-09-12: 매물·구매자당 하나의 대화와 텍스트 메시지 스키마, 참여자 전용 RLS와 Realtime publication을 적용했다.
+   - 구매자 대화 시작·전송, 판매자 대화 목록·답장, 제3자 접근 차단과 실시간 메시지 수신을 실제 Supabase에서 검증했다.
 3. 판매자만 예약·판매 완료 상태를 변경할 수 있도록 상태 전이와 동시성 제어를 구현한다.
 4. 만날 장소의 지도 공급자, 장소 식별자, 위도·경도와 주소 스냅샷을 저장한다.
 5. 거래 방식 확정 후 결제, 배송, 정산 모델을 별도로 설계한다.

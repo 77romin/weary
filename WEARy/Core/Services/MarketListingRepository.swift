@@ -75,7 +75,8 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
                 created_at,
                 seller:profiles!market_listings_seller_id_fkey(display_name),
                 media:market_listing_media(storage_path,sort_order),
-                favorites:market_listing_favorites(user_id)
+                favorites:market_listing_favorites(user_id),
+                conversations:market_conversations(id)
                 """
             )
             .in("status", values: ["active", "reserved", "sold"])
@@ -131,7 +132,7 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
                 meetingAddress: record.meetingAddress,
                 meetingLatitude: record.meetingLatitude,
                 meetingLongitude: record.meetingLongitude,
-                chatCount: 0,
+                chatCount: isOwned ? record.conversations.count : 0,
                 galleryImages: galleryImages,
                 showsWardrobeVerification: verification?.isVisible ?? false,
                 sourceGarmentID: verification?.sourcePrivateID ?? (isOwned ? record.sourcePrivateID : nil),
@@ -178,6 +179,7 @@ private struct RemoteMarketListingRecord: Decodable, Sendable {
     let seller: RemoteMarketSellerRecord
     let media: [RemoteMarketMediaRecord]
     let favorites: [RemoteMarketFavoriteRecord]
+    let conversations: [RemoteMarketConversationReference]
 
     var listingCondition: ListingCondition {
         switch condition {
@@ -196,7 +198,7 @@ private struct RemoteMarketListingRecord: Decodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, description, price, condition, status, seller, media, favorites
+        case id, title, description, price, condition, status, seller, media, favorites, conversations
         case sellerID = "seller_id"
         case sourcePrivateID = "source_private_id"
         case previousPrice = "previous_price"
@@ -236,6 +238,10 @@ private struct RemoteMarketFavoriteRecord: Decodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
     }
+}
+
+private struct RemoteMarketConversationReference: Decodable, Sendable {
+    let id: UUID
 }
 
 private struct RemoteMarketVerificationRecord: Decodable, Sendable {

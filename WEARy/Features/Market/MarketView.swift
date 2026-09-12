@@ -322,9 +322,20 @@ private struct MarketListingDetailView: View {
         }
         .sheet(isPresented: $showingChat) {
             if listing.isOwnedByCurrentUser {
-                SellerChatListView(listing: listing)
+                if listing.isSyncedFromServer == true {
+                    RemoteSellerChatListView(listing: listing)
+                } else {
+                    SellerChatListView(listing: listing)
+                }
             } else {
-                MockChatView(sellerName: listing.sellerName)
+                if listing.isSyncedFromServer == true {
+                    RemoteMarketChatView(
+                        listing: listing,
+                        counterpartName: listing.sellerName
+                    )
+                } else {
+                    MockChatView(sellerName: listing.sellerName)
+                }
             }
         }
         .sheet(isPresented: $showingEditor) { EditListingView(listing: listing) }
