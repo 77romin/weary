@@ -4,7 +4,7 @@ import SwiftUI
 
 struct CaptureView: View {
     private enum Phase: Hashable {
-        case ready, preview, analyzing, review, saved
+        case ready, preview, analyzing, review, publishing, saved
         case failed(String)
     }
 
@@ -26,6 +26,7 @@ struct CaptureView: View {
     @State private var showingNewGarment = false
     @State private var publishToFeed = false
     @State private var postCaption = "오늘의 WEARy"
+    @State private var publishFailureMessage: String?
 
     private let analyzer: any OutfitAnalyzing = DemoOutfitAnalyzer()
 
@@ -38,6 +39,7 @@ struct CaptureView: View {
                 case .preview: previewView
                 case .analyzing: analyzingView
                 case .review: reviewView
+                case .publishing: publishingView
                 case .saved: savedView
                 case .failed(let message): failedView(message)
                 }
@@ -88,6 +90,7 @@ struct CaptureView: View {
     private var navigationTitle: String {
         switch phase {
         case .review: "매칭 확인"
+        case .publishing: "커뮤니티 게시"
         case .saved: "기록 완료"
         default: "착장 기록"
         }
@@ -297,17 +300,36 @@ struct CaptureView: View {
                 .frame(width: 82, height: 82)
                 .background(WEARyTheme.lime, in: Circle())
             VStack(spacing: 7) {
-                Text("오늘의 룩을 기록했어요")
+                Text(publishFailureMessage == nil ? "오늘의 룩을 기록했어요" : "착장은 안전하게 기록했어요")
                     .font(.title2.bold())
                     .lightTextOutline()
-                Text("선택한 옷의 착용 데이터가 갱신됐어요.")
+                Text(publishFailureMessage ?? "선택한 옷의 착용 데이터가 갱신됐어요.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.62))
+                    .multilineTextAlignment(.center)
                     .lightTextOutline()
             }
             Button("다른 착장 기록하기", action: reset)
                 .buttonStyle(.borderedProminent)
                 .tint(WEARyTheme.lime)
                 .foregroundStyle(WEARyTheme.ink)
+        }
+        .foregroundStyle(.white)
+    }
+
+    private var publishingView: some View {
+        VStack(spacing: 24) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(WEARyTheme.lime)
+            VStack(spacing: 8) {
+                Text("커뮤니티에 게시하고 있어요")
+                    .font(.title2.bold())
+                    .lightTextOutline()
+                Text("착장 기록은 이미 기기에 안전하게 저장됐어요.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lightTextOutline()
+            }
         }
         .foregroundStyle(.white)
     }
@@ -376,7 +398,8 @@ struct CaptureView: View {
     }
 
     private func saveOutfit() {
-        let outfit = Outfit(wornAt: wornAt, isPublished: publishToFeed, photoData: photoData)
+        publishFailureMessage = nil
+        let outfit = Outfit(wornAt: wornAt, isPublished: false, photoData: photoData)
         modelContext.insert(outfit)
         let selectedGarments = selectedGarmentIDs
             .compactMap(garment(with:))
@@ -395,19 +418,63 @@ struct CaptureView: View {
             ))
         }
         do {
-            if publishToFeed {
-                modelContext.insert(CommunityPost(
-                    authorName: "나",
-                    authorHandle: "my.weary",
-                    authorInitials: "ME",
-                    caption: postCaption.isEmpty ? "오늘의 WEARy" : postCaption,
-                    tags: ["오늘의룩", "WEARy"],
-                    accentHex: "C7F25B",
-                    outfit: outfit
-                ))
-            }
             try modelContext.save()
-            phase = .saved
+            guard publishToFeed, let photoData else {
+                phase = .saved
+                return
+            }
+
+            let caption = postCaption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalCaption = caption.isEmpty ? "오늘의 WEARy" : caption
+            let draft = CommunityPostPublishDraft(
+                sourceOutfitID: outfit.id,
+                caption: finalCaption,
+                tags: ["오늘의룩", "WEARy"],
+                photoData: photoData,
+                items: selectedGarments.map { garment in
+                    CommunityPostPublishItem(
+                        sourceGarmentID: garment.id,
+                        name: garment.name,
+                        brand: garment.brand,
+                        categoryRaw: garment.categoryRaw,
+                        size: garment.size,
+                        colorHex: garment.colorHex,
+                        imageData: garment.cutoutImageData
+                    )
+                }
+            )
+            phase = .publishing
+
+            Task { @MainActor in
+                do {
+                    let postID = try await SupabaseCommunityPostPublisher.shared.publish(draft)
+                    outfit.isPublished = true
+                    modelContext.insert(CommunityPost(
+                        id: postID,
+                        authorName: "나",
+                        authorHandle: "my.weary",
+                        authorInitials: "ME",
+                        caption: finalCaption,
+                        tags: ["오늘의룩", "WEARy"],
+                        accentHex: "C7F25B",
+                        outfit: outfit,
+                        isSyncedFromServer: true
+                    ))
+                    do {
+                        try modelContext.save()
+                    } catch {
+#if DEBUG
+                        print("게시 성공 후 로컬 피드 캐시 저장 실패: \(error.localizedDescription)")
+#endif
+                    }
+                } catch {
+                    publishFailureMessage = "커뮤니티 게시는 완료하지 못했어요. 피드의 + 버튼에서 다시 시도할 수 있어요."
+#if DEBUG
+                    print("착장 기록 후 커뮤니티 게시 실패: \(error.localizedDescription)")
+#endif
+                }
+                phase = .saved
+            }
         } catch {
             modelContext.delete(outfit)
             phase = .failed("기록을 저장하지 못했어요. 다시 시도해 주세요.")
@@ -456,6 +523,7 @@ struct CaptureView: View {
         editingGroupID = nil
         publishToFeed = false
         postCaption = "오늘의 WEARy"
+        publishFailureMessage = nil
         phase = .ready
     }
 }

@@ -256,9 +256,11 @@ private struct CreateCommunityPostView: View {
     @State private var tagsText = "오늘의룩"
     @State private var orderedItemIDs: [UUID] = []
     @State private var itemEditMode: EditMode = .active
+    @State private var isPublishing = false
+    @State private var publishError: String?
 
     private var availableOutfits: [Outfit] {
-        outfits.filter { $0.isConfirmed && $0.photoData != nil }
+        outfits.filter { $0.isConfirmed && !$0.isPublished && $0.photoData != nil }
     }
 
     private var selectedOutfit: Outfit? {
@@ -279,9 +281,9 @@ private struct CreateCommunityPostView: View {
                 Section("공개할 착장") {
                     if availableOutfits.isEmpty {
                         ContentUnavailableView(
-                            "사진이 있는 착장이 없어요",
+                            "게시할 착장이 없어요",
                             systemImage: "camera",
-                            description: Text("기록 탭에서 실제 착장 사진을 먼저 남겨주세요.")
+                            description: Text("기록 탭에서 새 착장 사진을 남기거나 이미 게시한 착장을 확인해 주세요.")
                         )
                     } else {
                         Picker("착장 선택", selection: $selectedOutfitID) {
@@ -329,7 +331,7 @@ private struct CreateCommunityPostView: View {
                 }
 
                 Section {
-                    Text("공개한 착장과 옷 정보는 로컬 Mock 피드에만 표시됩니다.")
+                    Text("선택한 착장 사진과 옷 정보만 커뮤니티 서버에 공개됩니다. 구매 가격과 비공개 옷장 정보는 업로드하지 않아요.")
                         .font(.caption)
                         .foregroundStyle(WEARyTheme.secondaryInk)
                 }
@@ -341,11 +343,22 @@ private struct CreateCommunityPostView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") { dismiss() }
+                        .disabled(isPublishing)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("게시", action: publish)
+                    Button(action: publish) {
+                        if isPublishing {
+                            ProgressView()
+                        } else {
+                            Text("게시")
+                        }
+                    }
                         .fontWeight(.bold)
-                        .disabled(selectedOutfit == nil || caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(
+                            isPublishing
+                                || selectedOutfit == nil
+                                || caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
                         .accessibilityIdentifier("feed.publish")
                 }
             }
@@ -357,28 +370,80 @@ private struct CreateCommunityPostView: View {
                 resetItemOrder()
             }
             .environment(\.editMode, $itemEditMode)
+            .interactiveDismissDisabled(isPublishing)
+            .alert("게시하지 못했어요", isPresented: Binding(
+                get: { publishError != nil },
+                set: { if !$0 { publishError = nil } }
+            )) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text(publishError ?? "잠시 후 다시 시도해 주세요.")
+            }
         }
     }
 
     private func publish() {
-        guard let selectedOutfit else { return }
+        guard let selectedOutfit, let photoData = selectedOutfit.photoData else { return }
         let tags = tagsText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "") }
             .filter { !$0.isEmpty }
+        let normalizedTags = tags.isEmpty ? ["오늘의룩"] : tags
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         selectedOutfit.applyItemOrder(orderedItemIDs)
-        selectedOutfit.isPublished = true
-        modelContext.insert(CommunityPost(
-            authorName: "나",
-            authorHandle: "my.weary",
-            authorInitials: "ME",
-            caption: caption.trimmingCharacters(in: .whitespacesAndNewlines),
-            tags: tags.isEmpty ? ["오늘의룩"] : tags,
-            accentHex: "C7F25B",
-            outfit: selectedOutfit
-        ))
         try? modelContext.save()
-        dismiss()
+
+        let draft = CommunityPostPublishDraft(
+            sourceOutfitID: selectedOutfit.id,
+            caption: trimmedCaption,
+            tags: normalizedTags,
+            photoData: photoData,
+            items: selectedOrderedItems.compactMap { item in
+                guard let garment = item.garment else { return nil }
+                return CommunityPostPublishItem(
+                    sourceGarmentID: garment.id,
+                    name: garment.name,
+                    brand: garment.brand,
+                    categoryRaw: garment.categoryRaw,
+                    size: garment.size,
+                    colorHex: garment.colorHex,
+                    imageData: garment.cutoutImageData
+                )
+            }
+        )
+
+        isPublishing = true
+        publishError = nil
+
+        Task { @MainActor in
+            do {
+                let postID = try await SupabaseCommunityPostPublisher.shared.publish(draft)
+                selectedOutfit.isPublished = true
+                modelContext.insert(CommunityPost(
+                    id: postID,
+                    authorName: "나",
+                    authorHandle: "my.weary",
+                    authorInitials: "ME",
+                    caption: trimmedCaption,
+                    tags: normalizedTags,
+                    accentHex: "C7F25B",
+                    outfit: selectedOutfit,
+                    isSyncedFromServer: true
+                ))
+                do {
+                    try modelContext.save()
+                } catch {
+#if DEBUG
+                    print("게시 성공 후 로컬 피드 캐시 저장 실패: \(error.localizedDescription)")
+#endif
+                }
+                isPublishing = false
+                dismiss()
+            } catch {
+                isPublishing = false
+                publishError = error.localizedDescription
+            }
+        }
     }
 
     private func resetItemOrder() {
