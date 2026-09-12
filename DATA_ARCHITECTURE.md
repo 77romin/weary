@@ -58,7 +58,7 @@ flowchart LR
 
 ### 2.2 현재 피드 동기화 상태
 
-- 앱 시작과 Pull-to-Refresh에서 `CommunityFeedRepository`가 공개 범위상 조회 가능한 최신 게시물 30개를 읽는다.
+- 앱 시작과 Pull-to-Refresh에서 `CommunityFeedRepository`가 공개 범위상 조회 가능한 최신 게시물을 15개씩 읽는다.
 - 게시물과 작성자 프로필, 아이템 스냅샷, 댓글, 좋아요, 북마크, 팔로우 상태를 한 번의 관계형 조회 결과로 구성한다.
 - private `community-media` 이미지는 RLS가 허용한 객체만 내려받아 SwiftData 원격 캐시에 저장한다.
 - 서버 조회가 성공하면 원격 캐시 구간을 받은 목록으로 교체해 삭제되거나 더 이상 보이지 않는 게시물을 제거한다.
@@ -69,7 +69,17 @@ flowchart LR
 - 원격 게시물의 좋아요·북마크·팔로우는 복합 기본 키 기반 upsert/delete로 멱등하게 저장하고, 댓글은 인증 사용자 ID를 서버 정책으로 검증해 추가한다.
 - 화면에서는 소셜 상태를 먼저 반영한 뒤 요청 실패 시 이전 상태로 되돌린다. 발표용 로컬 샘플 게시물은 네트워크 없이 기존 SwiftData 동작을 유지한다.
 - MY의 팔로워·팔로잉 목록은 `follows`와 `profiles` 관계를 서버에서 조회하며, 서버 연결 실패 시 발표용 로컬 목록을 유지한다.
-- 다음 단계에서는 Supabase Realtime 구독 또는 새로고침으로 다른 사용자의 변경을 반영하고 커서 기반 피드 페이지네이션을 추가한다.
+- 생성 시각과 UUID의 복합 커서로 다음 페이지를 중복 없이 병합한다.
+- 게시물, 미디어, 아이템, 댓글, 좋아요, 북마크와 팔로우의 Realtime 변경을 감지하면 현재까지 읽은 원격 구간을 다시 동기화한다.
+
+### 2.3 현재 마켓 서버 기반 상태
+
+- `market_listings`는 판매자, 가격과 직전 가격, 상품 스냅샷, 거래 상태와 지도 위치를 저장한다.
+- 가격이 바뀌면 PostgreSQL 트리거가 클라이언트 입력을 신뢰하지 않고 기존 가격을 `previous_price`에 기록한다.
+- `market_listing_media`는 매물당 최대 8장의 이미지 경로와 순서를 저장한다.
+- `market_listing_verifications`는 구매가·착용 횟수 등 개인 옷장 스냅샷을 매물 본문과 분리한다. 판매자가 공개한 행 또는 본인 행만 조회할 수 있다.
+- `market_listing_favorites`는 사용자 본인만 읽고 변경할 수 있다.
+- 모든 마켓 테이블은 RLS와 Realtime publication이 적용됐다. 앱 화면은 아직 SwiftData Mock을 사용하며 Storage와 Repository 연결이 다음 단계다.
 
 ## 3. 개인 iCloud 영역 ERD
 
@@ -181,6 +191,7 @@ erDiagram
     POST ||--o{ BOOKMARK : receives
     USER ||--o{ LISTING : sells
     LISTING ||--o{ LISTING_MEDIA : contains
+    LISTING ||--o| LISTING_VERIFICATION : optionally_proves
     LISTING ||--o{ LISTING_FAVORITE : receives
     USER ||--o{ LISTING_FAVORITE : creates
     CONVERSATION ||--o{ CONVERSATION_MEMBER : includes
@@ -287,8 +298,10 @@ erDiagram
         string size_snapshot
         string condition
         string status
-        bool disclose_wear_count
-        int wear_count_snapshot
+        string meeting_name
+        string meeting_address
+        float meeting_latitude
+        float meeting_longitude
         datetime created_at
         datetime updated_at
         datetime deleted_at
@@ -299,6 +312,17 @@ erDiagram
         uuid listing_id FK
         string media_url
         int sort_order
+    }
+
+    LISTING_VERIFICATION {
+        uuid listing_id PK_FK
+        uuid source_private_id
+        string garment_name_snapshot
+        int purchase_price
+        datetime last_worn_at
+        int wear_count
+        string cutout_storage_path
+        bool is_visible
     }
 
     LISTING_FAVORITE {
@@ -450,6 +474,8 @@ sequenceDiagram
 ### 단계 C — 패션 중고거래
 
 1. 판매 상품과 이미지 업로드를 구현한다.
+   - 2026-09-12: `market_listings`, `market_listing_media`, `market_listing_verifications`, `market_listing_favorites`와 RLS를 개발 프로젝트에 적용했다.
+   - 두 익명 사용자로 판매자 전용 변경, 가격 이력, 사진 메타데이터 권한, 숨긴 옷장 인증과 개인 관심 목록 격리를 검증했다.
    - 매물별 다중 이미지 순서와 판매자의 옷장 데이터 공개 동의를 함께 저장한다.
 2. 상품 단위 1:1 대화와 채팅 기반 거래 합의를 구현한다.
 3. 판매자만 예약·판매 완료 상태를 변경할 수 있도록 상태 전이와 동시성 제어를 구현한다.
