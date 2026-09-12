@@ -16,6 +16,7 @@
 		3361C2EF9CC1B0E408B81443 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C79D020B4D50CA81A44531D6 /* Assets.xcassets */; };
 		33AE3F931E5E5C770142C893 /* OutfitAnalyzing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */; };
 		3599C73CC95D3B1D2DD0D979 /* MarketListing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F8AA34C93C727A49D7D6D5 /* MarketListing.swift */; };
+		3BDC60D6BE2FE29155100B40 /* CommunityInteractionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 981B2BF802938562BF0F8605 /* CommunityInteractionRepository.swift */; };
 		3CAC64E8405D40AD9815E64E /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85EDC6B33EF1A9670BF5CBCD /* SupabaseService.swift */; };
 		3E8F63BE86D60E5B057004D1 /* CommunityPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2823FDD51FA71EA66D4B619A /* CommunityPost.swift */; };
 		427F278721697B64C21DD6E2 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = CB6DC0D0BC133AB9F12822EB /* Supabase */; };
@@ -88,6 +89,7 @@
 		8B95B430ABCABDD13607100A /* Garment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Garment.swift; sourceTree = "<group>"; };
 		91F8AA34C93C727A49D7D6D5 /* MarketListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketListing.swift; sourceTree = "<group>"; };
 		9286AC6A777DAF8CB1C30552 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		981B2BF802938562BF0F8605 /* CommunityInteractionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityInteractionRepository.swift; sourceTree = "<group>"; };
 		98E0F1F76DF135FDD1ECFE30 /* CommunityPostPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityPostPublisher.swift; sourceTree = "<group>"; };
 		9AE57F226B78F9845A928B97 /* GarmentEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GarmentEditorView.swift; sourceTree = "<group>"; };
 		A1C1F9140F5C9FB51583D65A /* Supabase.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Supabase.xcconfig; sourceTree = "<group>"; };
@@ -233,6 +235,7 @@
 			isa = PBXGroup;
 			children = (
 				7F2312D75F5627C5342577B5 /* CommunityFeedRepository.swift */,
+				981B2BF802938562BF0F8605 /* CommunityInteractionRepository.swift */,
 				98E0F1F76DF135FDD1ECFE30 /* CommunityPostPublisher.swift */,
 				AA2FDFB74E5CF511FA35BC26 /* GarmentCutoutService.swift */,
 				6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */,
@@ -462,6 +465,7 @@
 				2DA6602E738816C8B0AB46CC /* CameraPicker.swift in Sources */,
 				EFC26848D803CAA43BD977E9 /* CaptureView.swift in Sources */,
 				751E9369D68885EF00CE8056 /* CommunityFeedRepository.swift in Sources */,
+				3BDC60D6BE2FE29155100B40 /* CommunityInteractionRepository.swift in Sources */,
 				3E8F63BE86D60E5B057004D1 /* CommunityPost.swift in Sources */,
 				92360687E87E1671BF48E8BC /* CommunityPostPublisher.swift in Sources */,
 				AAB09A3C8C75C4DE40D1C517 /* FeedView.swift in Sources */,

@@ -91,6 +91,14 @@ http_status="$(request POST "$api_base/rest/v1/follows" "$b_token" "$temp_dir/fo
   "$(jq -nc --arg follower "$b_id" --arg following "$a_id" '{follower_id:$follower,following_id:$following}')")"
 assert_equal "$http_status" "201" "user follows another profile"
 
+http_status="$(request GET "$api_base/rest/v1/follows?follower_id=eq.$b_id&status=eq.accepted&select=profile:profiles!follows_following_id_fkey(id,display_name,handle,avatar_initials,accent_hex)" "$b_token" "$temp_dir/following-profiles.json")"
+assert_equal "$http_status" "200" "user reads nested following profiles"
+assert_equal "$(jq --arg id "$a_id" '[.[] | select(.profile.id == $id)] | length' "$temp_dir/following-profiles.json")" "1" "following profile is returned"
+
+http_status="$(request GET "$api_base/rest/v1/follows?following_id=eq.$a_id&status=eq.accepted&select=profile:profiles!follows_follower_id_fkey(id,display_name,handle,avatar_initials,accent_hex)" "$a_token" "$temp_dir/follower-profiles.json")"
+assert_equal "$http_status" "200" "user reads nested follower profiles"
+assert_equal "$(jq --arg id "$b_id" '[.[] | select(.profile.id == $id)] | length' "$temp_dir/follower-profiles.json")" "1" "follower profile is returned"
+
 http_status="$(request GET "$api_base/rest/v1/posts?author_id=eq.$a_id&select=id" "$b_token" "$temp_dir/b-visible-after.json")"
 assert_equal "$http_status" "200" "follower reads visible posts"
 assert_equal "$(jq 'length' "$temp_dir/b-visible-after.json")" "2" "followers-only post becomes visible"

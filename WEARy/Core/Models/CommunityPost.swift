@@ -61,6 +61,7 @@ final class CommunityPost {
     var sourceOutfitID: UUID?
     var outfitWornAt: Date?
     var isSyncedFromServer: Bool?
+    var serverAuthorID: UUID?
     @Attribute(.externalStorage) var outfitPhotoData: Data?
     @Attribute(.externalStorage) var outfitItemsData: Data?
 
@@ -79,7 +80,8 @@ final class CommunityPost {
         isFollowing: Bool = false,
         accentHex: String = "A7B9CE",
         outfit: Outfit? = nil,
-        isSyncedFromServer: Bool = false
+        isSyncedFromServer: Bool = false,
+        serverAuthorID: UUID? = nil
     ) {
         self.id = id
         self.authorName = authorName
@@ -95,6 +97,7 @@ final class CommunityPost {
         self.isFollowing = isFollowing
         self.accentHex = accentHex
         self.isSyncedFromServer = isSyncedFromServer
+        self.serverAuthorID = serverAuthorID
         captureSnapshot(from: outfit)
     }
 
@@ -144,5 +147,6 @@ final class CommunityPost {
         outfitPhotoData = snapshot.outfitPhotoData
         outfitItemsData = try? PropertyListEncoder().encode(snapshot.outfitItems)
         isSyncedFromServer = true
+        serverAuthorID = snapshot.authorID
     }
 }

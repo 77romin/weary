@@ -6,12 +6,11 @@ struct ProfileView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
-    @Query(filter: #Predicate<CommunityPost> { $0.authorHandle == "my.weary" })
-    private var myPosts: [CommunityPost]
     @Query private var communityPosts: [CommunityPost]
     @State private var showsDemoResetConfirmation = false
     @State private var demoResetMessage: String?
     @State private var selectedSocialList: SocialListKind?
+    @State private var remoteSocialGraph: CommunitySocialGraphSnapshot?
 
     var body: some View {
         NavigationStack {
@@ -107,6 +106,9 @@ struct ProfileView: View {
                     }
                     .padding(20)
                 }
+                .refreshable {
+                    await loadRemoteSocialGraph()
+                }
             }
             .navigationTitle("MY")
             .sheet(item: $selectedSocialList) { kind in
@@ -129,7 +131,14 @@ struct ProfileView: View {
             } message: {
                 Text(demoResetMessage ?? "")
             }
+            .task {
+                await loadRemoteSocialGraph()
+            }
         }
+    }
+
+    private var myPosts: [CommunityPost] {
+        communityPosts.filter { $0.authorHandle == "my.weary" }
     }
 
     private func resetDemoData() {
@@ -160,7 +169,11 @@ struct ProfileView: View {
 
     private var followingUsers: [SocialUser] {
         var seen = Set<String>()
-        return communityPosts.compactMap { post in
+        var users = (remoteSocialGraph?.following ?? []).compactMap { user -> SocialUser? in
+            guard seen.insert(user.handle).inserted else { return nil }
+            return SocialUser(snapshot: user)
+        }
+        users += communityPosts.compactMap { post in
             guard post.isFollowing,
                   post.authorHandle != "my.weary",
                   seen.insert(post.authorHandle).inserted else { return nil }
@@ -171,15 +184,29 @@ struct ProfileView: View {
                 accentHex: post.accentHex
             )
         }
-        .sorted { $0.name < $1.name }
+        return users.sorted { $0.name < $1.name }
     }
 
     private var followerUsers: [SocialUser] {
-        [
+        guard let remoteSocialGraph else {
+            return [
             SocialUser(name: "서연", handle: "seoyeon.daily", initials: "SY", accentHex: "A7B9CE"),
             SocialUser(name: "민서", handle: "color.minseo", initials: "MS", accentHex: "FF765F"),
             SocialUser(name: "도윤", handle: "doyoon.fit", initials: "DY", accentHex: "C7F25B"),
-        ]
+            ]
+        }
+        return remoteSocialGraph.followers.map(SocialUser.init(snapshot:)).sorted { $0.name < $1.name }
+    }
+
+    @MainActor
+    private func loadRemoteSocialGraph() async {
+        do {
+            remoteSocialGraph = try await SupabaseCommunityInteractionRepository.shared.fetchSocialGraph()
+        } catch {
+#if DEBUG
+            print("원격 팔로우 목록 동기화 실패, 로컬 목록을 유지합니다: \(error.localizedDescription)")
+#endif
+        }
     }
 
     private var monthlyDiscoveryText: String {
@@ -217,6 +244,20 @@ private struct SocialUser: Identifiable {
     let accentHex: String
 
     var id: String { handle }
+
+    init(name: String, handle: String, initials: String, accentHex: String) {
+        self.name = name
+        self.handle = handle
+        self.initials = initials
+        self.accentHex = accentHex
+    }
+
+    init(snapshot: CommunitySocialUserSnapshot) {
+        name = snapshot.name
+        handle = snapshot.handle
+        initials = snapshot.initials
+        accentHex = snapshot.accentHex
+    }
 }
 
 private struct SocialUserListView: View {

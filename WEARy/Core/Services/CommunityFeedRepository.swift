@@ -74,6 +74,7 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
         snapshots.reserveCapacity(records.count)
 
         for record in records {
+            let isCurrentUser = record.authorID == currentUserID
             let mediaPath = record.media.min(by: { $0.sortOrder < $1.sortOrder })?.storagePath
             let photoData = await download(path: mediaPath, using: client)
             var garments: [CommunityGarmentSnapshot] = []
@@ -98,9 +99,9 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
             snapshots.append(CommunityFeedPostSnapshot(
                 id: record.id,
                 authorID: record.authorID,
-                authorName: record.author.displayName,
-                authorHandle: record.author.handle ?? "weary",
-                authorInitials: record.author.avatarInitials,
+                authorName: isCurrentUser ? "나" : record.author.displayName,
+                authorHandle: isCurrentUser ? "my.weary" : (record.author.handle ?? "weary"),
+                authorInitials: isCurrentUser ? "ME" : record.author.avatarInitials,
                 authorAccentHex: record.author.accentHex,
                 caption: record.caption,
                 tags: record.tags,
@@ -255,7 +256,8 @@ enum CommunityFeedCacheStore {
                     tags: snapshot.tags,
                     createdAt: snapshot.createdAt,
                     accentHex: snapshot.authorAccentHex,
-                    isSyncedFromServer: true
+                    isSyncedFromServer: true,
+                    serverAuthorID: snapshot.authorID
                 )
                 post.applyServerSnapshot(snapshot)
                 modelContext.insert(post)

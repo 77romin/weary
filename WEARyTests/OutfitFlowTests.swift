@@ -189,6 +189,7 @@ struct OutfitFlowTests {
         #expect(post.outfitPhotoData == photo)
         #expect(post.outfitItems == [garment])
         #expect(post.isSyncedFromServer == true)
+        #expect(post.serverAuthorID == authorID)
     }
 
     @Test("원격 피드 캐시는 최신 서버 목록으로 교체하고 로컬 게시물은 보존한다")

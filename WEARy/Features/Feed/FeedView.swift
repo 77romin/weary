@@ -176,6 +176,10 @@ private struct CommunityPostCard: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allPosts: [CommunityPost]
     @Bindable var post: CommunityPost
+    @State private var isUpdatingLike = false
+    @State private var isUpdatingBookmark = false
+    @State private var isUpdatingFollow = false
+    @State private var interactionError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -194,6 +198,14 @@ private struct CommunityPostCard: View {
         }
         .padding(16)
         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 28))
+        .alert("요청을 완료하지 못했어요", isPresented: Binding(
+            get: { interactionError != nil },
+            set: { if !$0 { interactionError = nil } }
+        )) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(interactionError ?? "잠시 후 다시 시도해 주세요.")
+        }
     }
 
     private var authorHeader: some View {
@@ -208,42 +220,122 @@ private struct CommunityPostCard: View {
                     .font(.caption2).foregroundStyle(WEARyTheme.secondaryInk)
             }
             Spacer()
-            Button(post.isFollowing ? "팔로잉" : "팔로우") {
-                let newValue = !post.isFollowing
-                for authorPost in allPosts where authorPost.authorHandle == post.authorHandle {
-                    authorPost.isFollowing = newValue
+            if post.authorHandle != "my.weary" {
+                Button(post.isFollowing ? "팔로잉" : "팔로우") {
+                    toggleFollowing()
                 }
-                try? modelContext.save()
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .tint(WEARyTheme.ink)
+                .disabled(isUpdatingFollow)
+                .accessibilityIdentifier("follow.\(post.authorHandle)")
             }
-            .font(.caption.weight(.bold))
-            .buttonStyle(.bordered)
-            .tint(WEARyTheme.ink)
-            .accessibilityIdentifier("follow.\(post.authorHandle)")
         }
     }
 
     private var reactionBar: some View {
         HStack(spacing: 18) {
             Button {
-                post.isLiked.toggle()
-                post.likeCount += post.isLiked ? 1 : -1
-                try? modelContext.save()
+                toggleLike()
             } label: {
                 Label("\(post.likeCount)", systemImage: post.isLiked ? "heart.fill" : "heart")
                     .foregroundStyle(post.isLiked ? WEARyTheme.coral : WEARyTheme.ink)
             }
+            .disabled(isUpdatingLike)
             Label("\(post.comments.count)", systemImage: "bubble")
             Spacer()
             Button {
-                post.isSaved.toggle()
-                try? modelContext.save()
+                toggleBookmark()
             } label: {
                 Image(systemName: post.isSaved ? "bookmark.fill" : "bookmark")
             }
+            .disabled(isUpdatingBookmark)
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(WEARyTheme.ink)
         .buttonStyle(.plain)
+    }
+
+    private func toggleLike() {
+        let previousValue = post.isLiked
+        let desiredValue = !previousValue
+        post.isLiked = desiredValue
+        post.likeCount = max(0, post.likeCount + (desiredValue ? 1 : -1))
+        try? modelContext.save()
+
+        guard post.isSyncedFromServer == true else { return }
+        isUpdatingLike = true
+        Task { @MainActor in
+            do {
+                try await SupabaseCommunityInteractionRepository.shared.setLike(
+                    postID: post.id,
+                    isLiked: desiredValue
+                )
+            } catch {
+                post.isLiked = previousValue
+                post.likeCount = max(0, post.likeCount + (desiredValue ? -1 : 1))
+                try? modelContext.save()
+                interactionError = error.localizedDescription
+            }
+            isUpdatingLike = false
+        }
+    }
+
+    private func toggleBookmark() {
+        let previousValue = post.isSaved
+        let desiredValue = !previousValue
+        post.isSaved = desiredValue
+        try? modelContext.save()
+
+        guard post.isSyncedFromServer == true else { return }
+        isUpdatingBookmark = true
+        Task { @MainActor in
+            do {
+                try await SupabaseCommunityInteractionRepository.shared.setBookmark(
+                    postID: post.id,
+                    isSaved: desiredValue
+                )
+            } catch {
+                post.isSaved = previousValue
+                try? modelContext.save()
+                interactionError = error.localizedDescription
+            }
+            isUpdatingBookmark = false
+        }
+    }
+
+    private func toggleFollowing() {
+        let previousValue = post.isFollowing
+        let desiredValue = !previousValue
+        applyFollowing(desiredValue)
+        try? modelContext.save()
+
+        guard post.isSyncedFromServer == true, let authorID = post.serverAuthorID else { return }
+        isUpdatingFollow = true
+        Task { @MainActor in
+            do {
+                try await SupabaseCommunityInteractionRepository.shared.setFollowing(
+                    authorID: authorID,
+                    isFollowing: desiredValue
+                )
+            } catch {
+                applyFollowing(previousValue)
+                try? modelContext.save()
+                interactionError = error.localizedDescription
+            }
+            isUpdatingFollow = false
+        }
+    }
+
+    private func applyFollowing(_ value: Bool) {
+        for authorPost in allPosts {
+            if let authorID = post.serverAuthorID {
+                guard authorPost.serverAuthorID == authorID else { continue }
+            } else {
+                guard authorPost.authorHandle == post.authorHandle else { continue }
+            }
+            authorPost.isFollowing = value
+        }
     }
 }
 
@@ -508,6 +600,8 @@ private struct CommunityPostDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var post: CommunityPost
     @State private var newComment = ""
+    @State private var isSubmittingComment = false
+    @State private var commentError: String?
 
     var body: some View {
         ScrollView {
@@ -529,6 +623,14 @@ private struct CommunityPostDetailView: View {
         .background(WEARyTheme.canvas)
         .navigationTitle(post.authorName)
         .navigationBarTitleDisplayMode(.inline)
+        .alert("댓글을 등록하지 못했어요", isPresented: Binding(
+            get: { commentError != nil },
+            set: { if !$0 { commentError = nil } }
+        )) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(commentError ?? "잠시 후 다시 시도해 주세요.")
+        }
     }
 
     private var outfitItems: some View {
@@ -560,14 +662,50 @@ private struct CommunityPostDetailView: View {
             HStack {
                 TextField("댓글을 남겨보세요", text: $newComment)
                     .textFieldStyle(.roundedBorder)
-                Button("등록") {
-                    post.appendComment("나: \(newComment)")
-                    newComment = ""
-                    try? modelContext.save()
+                Button {
+                    submitComment()
+                } label: {
+                    if isSubmittingComment {
+                        ProgressView()
+                    } else {
+                        Text("등록")
+                    }
                 }
                 .fontWeight(.bold)
-                .disabled(newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    isSubmittingComment
+                        || newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
             }
+        }
+    }
+
+    private func submitComment() {
+        let body = newComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+
+        guard post.isSyncedFromServer == true else {
+            post.appendComment("나: \(body)")
+            newComment = ""
+            try? modelContext.save()
+            return
+        }
+
+        isSubmittingComment = true
+        commentError = nil
+        Task { @MainActor in
+            do {
+                try await SupabaseCommunityInteractionRepository.shared.addComment(
+                    postID: post.id,
+                    body: body
+                )
+                post.appendComment("나: \(body)")
+                newComment = ""
+                try? modelContext.save()
+            } catch {
+                commentError = error.localizedDescription
+            }
+            isSubmittingComment = false
         }
     }
 }
