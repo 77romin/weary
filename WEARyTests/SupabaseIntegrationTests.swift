@@ -233,6 +233,111 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("마켓 매물과 private 이미지를 원격 Repository에서 복원한다")
+    func readsMarketListingAndImagesFromRemoteRepository() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else {
+            return
+        }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+
+        let userID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let listingID = UUID()
+        let sourceGarmentID = UUID()
+        let pixelPNG = Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )!
+        let galleryPath = "\(userID.uuidString)/\(listingID.uuidString)/gallery/0.png"
+        let cutoutPath = "\(userID.uuidString)/\(listingID.uuidString)/verification/cutout.png"
+        let marker = "Market repository integration \(UUID().uuidString)"
+
+        try await client.from("market_listings").insert(IntegrationMarketListingInsert(
+            id: listingID,
+            sellerID: userID,
+            sourcePrivateID: sourceGarmentID,
+            title: marker,
+            description: "서버 매물 상세",
+            price: 50_000,
+            brandSnapshot: "WEARy",
+            categorySnapshot: GarmentCategory.outer.rawValue,
+            sizeSnapshot: "M",
+            colorHexSnapshot: "223344",
+            condition: "like_new",
+            meetingName: "성수역",
+            meetingAddress: "서울 성동구",
+            meetingLatitude: 37.5445,
+            meetingLongitude: 127.0559
+        )).execute()
+
+        var capturedError: Error?
+        do {
+            try await client.storage.from("market-media").upload(
+                galleryPath,
+                data: pixelPNG,
+                options: FileOptions(contentType: "image/png", upsert: false)
+            )
+            try await client.storage.from("market-media").upload(
+                cutoutPath,
+                data: pixelPNG,
+                options: FileOptions(contentType: "image/png", upsert: false)
+            )
+            try await client.from("market_listing_media").insert(IntegrationMarketMediaInsert(
+                listingID: listingID,
+                storagePath: galleryPath,
+                sortOrder: 0
+            )).execute()
+            try await client.from("market_listing_verifications").insert(
+                IntegrationMarketVerificationInsert(
+                    listingID: listingID,
+                    sourcePrivateID: sourceGarmentID,
+                    garmentNameSnapshot: "통합 테스트 코트",
+                    purchasePrice: 120_000,
+                    wearCount: 3,
+                    cutoutStoragePath: cutoutPath,
+                    isVisible: true
+                )
+            ).execute()
+            try await client.from("market_listing_favorites").insert(
+                IntegrationMarketFavoriteInsert(listingID: listingID, userID: userID)
+            ).execute()
+            try await client
+                .from("market_listings")
+                .update(IntegrationMarketPriceUpdate(price: 45_000))
+                .eq("id", value: listingID.uuidString)
+                .execute()
+
+            let listings = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+            let listing = try #require(listings.first { $0.id == listingID })
+            #expect(listing.sellerID == userID)
+            #expect(listing.title == marker)
+            #expect(listing.price == 45_000)
+            #expect(listing.previousPrice == 50_000)
+            #expect(listing.condition == .likeNew)
+            #expect(listing.status == .active)
+            #expect(listing.isLiked)
+            #expect(listing.isOwnedByCurrentUser)
+            #expect(listing.galleryImages == [pixelPNG])
+            #expect(listing.showsWardrobeVerification)
+            #expect(listing.sourceGarmentID == sourceGarmentID)
+            #expect(listing.garmentCutoutImageDataSnapshot == pixelPNG)
+            #expect(listing.verificationPurchasePrice == 120_000)
+            #expect(listing.verificationWearCount == 3)
+        } catch {
+            capturedError = error
+        }
+
+        _ = try? await client.storage.from("market-media").remove(paths: [galleryPath, cutoutPath])
+        _ = try? await client
+            .from("market_listings")
+            .delete()
+            .eq("id", value: listingID.uuidString)
+            .execute()
+
+        if let capturedError { throw capturedError }
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration
@@ -339,6 +444,84 @@ private struct IntegrationPostInsert: Encodable, Sendable {
         case authorID = "author_id"
         case createdAt = "created_at"
     }
+}
+
+private struct IntegrationMarketListingInsert: Encodable, Sendable {
+    let id: UUID
+    let sellerID: UUID
+    let sourcePrivateID: UUID
+    let title: String
+    let description: String
+    let price: Int
+    let brandSnapshot: String
+    let categorySnapshot: String
+    let sizeSnapshot: String
+    let colorHexSnapshot: String
+    let condition: String
+    let meetingName: String
+    let meetingAddress: String
+    let meetingLatitude: Double
+    let meetingLongitude: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, description, price, condition
+        case sellerID = "seller_id"
+        case sourcePrivateID = "source_private_id"
+        case brandSnapshot = "brand_snapshot"
+        case categorySnapshot = "category_snapshot"
+        case sizeSnapshot = "size_snapshot"
+        case colorHexSnapshot = "color_hex_snapshot"
+        case meetingName = "meeting_name"
+        case meetingAddress = "meeting_address"
+        case meetingLatitude = "meeting_latitude"
+        case meetingLongitude = "meeting_longitude"
+    }
+}
+
+private struct IntegrationMarketMediaInsert: Encodable, Sendable {
+    let listingID: UUID
+    let storagePath: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case listingID = "listing_id"
+        case storagePath = "storage_path"
+        case sortOrder = "sort_order"
+    }
+}
+
+private struct IntegrationMarketVerificationInsert: Encodable, Sendable {
+    let listingID: UUID
+    let sourcePrivateID: UUID
+    let garmentNameSnapshot: String
+    let purchasePrice: Int
+    let wearCount: Int
+    let cutoutStoragePath: String
+    let isVisible: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case listingID = "listing_id"
+        case sourcePrivateID = "source_private_id"
+        case garmentNameSnapshot = "garment_name_snapshot"
+        case purchasePrice = "purchase_price"
+        case wearCount = "wear_count"
+        case cutoutStoragePath = "cutout_storage_path"
+        case isVisible = "is_visible"
+    }
+}
+
+private struct IntegrationMarketFavoriteInsert: Encodable, Sendable {
+    let listingID: UUID
+    let userID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case listingID = "listing_id"
+        case userID = "user_id"
+    }
+}
+
+private struct IntegrationMarketPriceUpdate: Encodable, Sendable {
+    let price: Int
 }
 
 private enum TestIntegrationError: Error {

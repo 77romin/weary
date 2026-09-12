@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-enum ListingCondition: String, CaseIterable, Identifiable {
+enum ListingCondition: String, CaseIterable, Codable, Identifiable, Sendable {
     case likeNew = "새 상품에 가까워요"
     case excellent = "사용감이 거의 없어요"
     case good = "사용감이 조금 있어요"
@@ -9,7 +9,7 @@ enum ListingCondition: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum ListingStatus: String, CaseIterable, Identifiable {
+enum ListingStatus: String, CaseIterable, Codable, Identifiable, Sendable {
     case active = "판매 중"
     case reserved = "예약 중"
     case sold = "판매 완료"
@@ -48,6 +48,8 @@ final class MarketListing {
     var verificationLastWornAt: Date?
     var verificationWearCount: Int?
     var ownedByCurrentUser: Bool?
+    var isSyncedFromServer: Bool?
+    var serverSellerID: UUID?
 
     init(
         id: UUID = UUID(),
@@ -71,7 +73,9 @@ final class MarketListing {
         galleryImages: [Data] = [],
         showsWardrobeVerification: Bool = false,
         garment: Garment? = nil,
-        isOwnedByCurrentUser: Bool? = nil
+        isOwnedByCurrentUser: Bool? = nil,
+        isSyncedFromServer: Bool = false,
+        serverSellerID: UUID? = nil
     ) {
         self.id = id
         self.sellerName = sellerName
@@ -94,6 +98,8 @@ final class MarketListing {
         galleryData = try? PropertyListEncoder().encode(galleryImages)
         wardrobeVerificationVisible = showsWardrobeVerification
         ownedByCurrentUser = isOwnedByCurrentUser
+        self.isSyncedFromServer = isSyncedFromServer
+        self.serverSellerID = serverSellerID
         captureSnapshot(from: garment)
     }
 
@@ -167,6 +173,39 @@ final class MarketListing {
         verificationPurchasePrice = garment.purchasePrice
         verificationLastWornAt = garment.lastWornAt
         verificationWearCount = garment.wearCount
+    }
+
+    func applyServerSnapshot(_ snapshot: MarketListingSnapshot) {
+        sellerName = snapshot.sellerName
+        title = snapshot.title
+        detailText = snapshot.detailText
+        price = snapshot.price
+        previousPrice = snapshot.previousPrice
+        originalPrice = snapshot.verificationPurchasePrice
+        size = snapshot.size
+        condition = snapshot.condition
+        status = snapshot.status
+        createdAt = snapshot.createdAt
+        isLiked = snapshot.isLiked
+        accentHex = snapshot.accentHex
+        meetingPlace = snapshot.meetingPlace
+        meetingAddress = snapshot.meetingAddress
+        meetingLatitude = snapshot.meetingLatitude
+        meetingLongitude = snapshot.meetingLongitude
+        chatCount = snapshot.chatCount
+        updateGalleryImages(snapshot.galleryImages)
+        wardrobeVerificationVisible = snapshot.showsWardrobeVerification
+        sourceGarmentID = snapshot.sourceGarmentID
+        garmentNameSnapshot = snapshot.garmentNameSnapshot
+        garmentCategoryRawSnapshot = snapshot.garmentCategoryRawSnapshot
+        garmentColorHexSnapshot = snapshot.garmentColorHexSnapshot
+        garmentCutoutImageDataSnapshot = snapshot.garmentCutoutImageDataSnapshot
+        verificationPurchasePrice = snapshot.verificationPurchasePrice
+        verificationLastWornAt = snapshot.verificationLastWornAt
+        verificationWearCount = snapshot.verificationWearCount
+        ownedByCurrentUser = snapshot.isOwnedByCurrentUser
+        isSyncedFromServer = true
+        serverSellerID = snapshot.sellerID
     }
 
     func sourceGarment(in context: ModelContext) -> Garment? {

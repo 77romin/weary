@@ -413,6 +413,78 @@ struct OutfitFlowTests {
         #expect(listing.verificationWearCount == 1)
     }
 
+    @Test("원격 마켓 캐시는 서버 목록으로 교체하고 로컬 매물은 보존한다")
+    @MainActor
+    func remoteMarketCacheReplacesOnlyServerListings() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: Garment.self, Outfit.self, OutfitItem.self, CommunityPost.self, MarketListing.self,
+            configurations: configuration
+        )
+        let context = container.mainContext
+        let localListing = MarketListing(
+            sellerName: "나", title: "로컬 재킷", detailText: "로컬 매물", price: 30_000
+        )
+        let staleRemoteListing = MarketListing(
+            sellerName: "서버", title: "사라진 재킷", detailText: "이전 원격 매물",
+            price: 40_000, isSyncedFromServer: true, serverSellerID: UUID()
+        )
+        context.insert(localListing)
+        context.insert(staleRemoteListing)
+        try context.save()
+
+        let remoteID = UUID()
+        let sellerID = UUID()
+        let gallery = Data([0x01, 0x02])
+        let cutout = Data([0x03, 0x04])
+        let snapshot = MarketListingSnapshot(
+            id: remoteID,
+            sellerID: sellerID,
+            sellerName: "원격 판매자",
+            title: "원격 코트",
+            detailText: "서버 상세",
+            price: 55_000,
+            previousPrice: 60_000,
+            size: "M",
+            condition: .likeNew,
+            status: .reserved,
+            createdAt: .now,
+            isLiked: true,
+            accentHex: "112233",
+            meetingPlace: "성수역",
+            meetingAddress: "서울 성동구",
+            meetingLatitude: 37.5,
+            meetingLongitude: 127.0,
+            chatCount: 0,
+            galleryImages: [gallery],
+            showsWardrobeVerification: true,
+            sourceGarmentID: UUID(),
+            garmentNameSnapshot: "옷장 코트",
+            garmentCategoryRawSnapshot: GarmentCategory.outer.rawValue,
+            garmentColorHexSnapshot: "112233",
+            garmentCutoutImageDataSnapshot: cutout,
+            verificationPurchasePrice: 120_000,
+            verificationLastWornAt: Date(timeIntervalSince1970: 100),
+            verificationWearCount: 4,
+            isOwnedByCurrentUser: false
+        )
+
+        try MarketListingCacheStore.replaceRemoteListings(with: [snapshot], in: context)
+
+        let listings = try context.fetch(FetchDescriptor<MarketListing>())
+        let remote = try #require(listings.first { $0.id == remoteID })
+        #expect(listings.contains { $0.id == localListing.id })
+        #expect(!listings.contains { $0.id == staleRemoteListing.id })
+        #expect(remote.serverSellerID == sellerID)
+        #expect(remote.isSyncedFromServer == true)
+        #expect(remote.priceChange == -5_000)
+        #expect(remote.status == .reserved)
+        #expect(remote.galleryImages == [gallery])
+        #expect(remote.garmentCutoutImageDataSnapshot == cutout)
+        #expect(remote.showsWardrobeVerification)
+        #expect(!remote.isOwnedByCurrentUser)
+    }
+
     @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")
     func reviewCandidatesRespectStatusAndThreshold() {
         let now = Date(timeIntervalSince1970: 2_000_000_000)

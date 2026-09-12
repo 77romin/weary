@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct MarketView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \MarketListing.createdAt, order: .reverse) private var listings: [MarketListing]
     @State private var showingSellFlow = false
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -32,6 +33,7 @@ struct MarketView: View {
                         }
                         .padding(18)
                     }
+                    .refreshable { await syncRemoteMarket() }
                 }
             }
             .navigationTitle("마켓")
@@ -44,6 +46,25 @@ struct MarketView: View {
                 MarketListingDetailView(listing: listing)
             }
             .sheet(isPresented: $showingSellFlow) { SellGarmentPicker() }
+            .task { await syncRemoteMarket() }
+        }
+    }
+
+    @MainActor
+    private func syncRemoteMarket() async {
+        do {
+            let remoteListings = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 30)
+            try MarketListingCacheStore.replaceRemoteListings(
+                with: remoteListings,
+                in: modelContext
+            )
+#if DEBUG
+            print("원격 마켓 동기화 완료: \(remoteListings.count)개")
+#endif
+        } catch {
+#if DEBUG
+            print("원격 마켓 동기화 실패, 로컬 캐시를 유지합니다: \(error.localizedDescription)")
+#endif
         }
     }
 }
