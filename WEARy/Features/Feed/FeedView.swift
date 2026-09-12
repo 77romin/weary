@@ -677,11 +677,15 @@ struct CommunityLookArtwork: View {
 }
 
 private struct CommunityPostDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Bindable var post: CommunityPost
     @State private var newComment = ""
     @State private var isSubmittingComment = false
     @State private var commentError: String?
+    @State private var showingReport = false
+    @State private var showingBlockConfirmation = false
+    @State private var safetyMessage: String?
 
     var body: some View {
         ScrollView {
@@ -703,6 +707,42 @@ private struct CommunityPostDetailView: View {
         .background(WEARyTheme.canvas)
         .navigationTitle(post.authorName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if post.isSyncedFromServer == true,
+               post.authorHandle != "my.weary",
+               post.serverAuthorID != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingReport = true
+                        } label: {
+                            Label("게시물 신고", systemImage: "exclamationmark.bubble")
+                        }
+                        Button(role: .destructive) {
+                            showingBlockConfirmation = true
+                        } label: {
+                            Label("작성자 차단", systemImage: "person.crop.circle.badge.xmark")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityIdentifier("feed.safetyMenu")
+                }
+            }
+        }
+        .sheet(isPresented: $showingReport) {
+            ContentReportSheet(target: .post, targetID: post.id) {
+                safetyMessage = "신고가 접수되었습니다."
+            }
+        }
+        .confirmationDialog("이 사용자를 차단할까요?", isPresented: $showingBlockConfirmation) {
+            Button("차단", role: .destructive) {
+                Task { await blockAuthor() }
+            }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("차단하면 이 사용자의 피드와 매물이 더 이상 표시되지 않습니다.")
+        }
         .alert("댓글을 등록하지 못했어요", isPresented: Binding(
             get: { commentError != nil },
             set: { if !$0 { commentError = nil } }
@@ -710,6 +750,14 @@ private struct CommunityPostDetailView: View {
             Button("확인", role: .cancel) {}
         } message: {
             Text(commentError ?? "잠시 후 다시 시도해 주세요.")
+        }
+        .alert("알림", isPresented: Binding(
+            get: { safetyMessage != nil },
+            set: { if !$0 { safetyMessage = nil } }
+        )) {
+            Button("확인", role: .cancel) { }
+        } message: {
+            Text(safetyMessage ?? "")
         }
     }
 
@@ -786,6 +834,20 @@ private struct CommunityPostDetailView: View {
                 commentError = error.localizedDescription
             }
             isSubmittingComment = false
+        }
+    }
+
+    @MainActor
+    private func blockAuthor() async {
+        guard let authorID = post.serverAuthorID else { return }
+        do {
+            try await SupabaseContentSafetyRepository.shared.setBlocked(
+                userID: authorID,
+                isBlocked: true
+            )
+            dismiss()
+        } catch {
+            safetyMessage = error.localizedDescription
         }
     }
 }

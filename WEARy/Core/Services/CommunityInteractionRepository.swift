@@ -103,6 +103,7 @@ actor SupabaseCommunityInteractionRepository: CommunityInteractionServing {
 
     func fetchSocialGraph() async throws -> CommunitySocialGraphSnapshot {
         let (client, userID) = try await authenticatedContext()
+        let blockedUserIDs = try await SupabaseContentSafetyRepository.shared.fetchBlockedUserIDs()
         let followingRows: [RemoteSocialRelation] = try await client
             .from("follows")
             .select(
@@ -123,8 +124,8 @@ actor SupabaseCommunityInteractionRepository: CommunityInteractionServing {
             .value
 
         return CommunitySocialGraphSnapshot(
-            followers: followerRows.map(\.profile.snapshot),
-            following: followingRows.map(\.profile.snapshot)
+            followers: followerRows.map(\.profile.snapshot).filter { !blockedUserIDs.contains($0.id) },
+            following: followingRows.map(\.profile.snapshot).filter { !blockedUserIDs.contains($0.id) }
         )
     }
 

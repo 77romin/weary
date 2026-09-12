@@ -55,6 +55,7 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
         }
 
         let currentUserID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let blockedUserIDs = try await SupabaseContentSafetyRepository.shared.fetchBlockedUserIDs()
         let safeLimit = min(max(limit, 1), 100)
         var query = client
             .from("posts")
@@ -93,6 +94,7 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
             .execute()
             .value
         let pageRecords = Array(records.prefix(safeLimit))
+        let visiblePageRecords = pageRecords.filter { !blockedUserIDs.contains($0.authorID) }
         let hasMore = records.count > safeLimit
 
         let followingRecords: [RemoteFollowRecord] = try await client
@@ -105,9 +107,9 @@ actor SupabaseCommunityFeedRepository: CommunityFeedRepository {
         let followingIDs = Set(followingRecords.map(\.followingID))
 
         var snapshots: [CommunityFeedPostSnapshot] = []
-        snapshots.reserveCapacity(pageRecords.count)
+        snapshots.reserveCapacity(visiblePageRecords.count)
 
-        for record in pageRecords {
+        for record in visiblePageRecords {
             let isCurrentUser = record.authorID == currentUserID
             let mediaPath = record.media.min(by: { $0.sortOrder < $1.sortOrder })?.storagePath
             let photoData = await download(path: mediaPath, using: client)
@@ -357,6 +359,7 @@ actor SupabaseCommunityFeedRealtimeRepository {
             "post_likes",
             "bookmarks",
             "follows",
+            "user_blocks",
         ]
 
         subscriptions = tables.map { table in

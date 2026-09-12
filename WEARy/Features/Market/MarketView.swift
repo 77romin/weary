@@ -226,6 +226,9 @@ private struct MarketListingDetailView: View {
     @State private var showingDeleteConfirmation = false
     @State private var mutationError: String?
     @State private var isUpdatingFavorite = false
+    @State private var showingReport = false
+    @State private var showingBlockConfirmation = false
+    @State private var safetyMessage: String?
 
     var body: some View {
         ScrollView {
@@ -318,6 +321,29 @@ private struct MarketListingDetailView: View {
                     }
                     .accessibilityIdentifier("market.ownerMenu")
                 }
+            } else if listing.isSyncedFromServer == true, listing.serverSellerID != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingReport = true
+                        } label: {
+                            Label("매물 신고", systemImage: "exclamationmark.bubble")
+                        }
+                        Button(role: .destructive) {
+                            showingBlockConfirmation = true
+                        } label: {
+                            Label("판매자 차단", systemImage: "person.crop.circle.badge.xmark")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityIdentifier("market.safetyMenu")
+                }
+            }
+        }
+        .sheet(isPresented: $showingReport) {
+            ContentReportSheet(target: .listing, targetID: listing.id) {
+                safetyMessage = "신고가 접수되었습니다."
             }
         }
         .sheet(isPresented: $showingChat) {
@@ -345,9 +371,20 @@ private struct MarketListingDetailView: View {
         } message: {
             Text("마켓 게시물만 삭제되고 옷은 내 옷장에 남습니다.")
         }
+        .confirmationDialog("이 판매자를 차단할까요?", isPresented: $showingBlockConfirmation) {
+            Button("차단", role: .destructive) {
+                Task { await blockSeller() }
+            }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("차단하면 이 판매자의 피드와 매물이 더 이상 표시되지 않습니다.")
+        }
         .alert("요청 처리 실패", isPresented: errorPresentation($mutationError)) {
             Button("확인", role: .cancel) { }
         } message: { Text(mutationError ?? "다시 시도해 주세요.") }
+        .alert("알림", isPresented: errorPresentation($safetyMessage)) {
+            Button("확인", role: .cancel) { }
+        } message: { Text(safetyMessage ?? "") }
     }
 
     private var ownerActions: some View {
@@ -428,6 +465,20 @@ private struct MarketListingDetailView: View {
                 mutationError = error.localizedDescription
             }
             isUpdatingFavorite = false
+        }
+    }
+
+    @MainActor
+    private func blockSeller() async {
+        guard let sellerID = listing.serverSellerID else { return }
+        do {
+            try await SupabaseContentSafetyRepository.shared.setBlocked(
+                userID: sellerID,
+                isBlocked: true
+            )
+            dismiss()
+        } catch {
+            safetyMessage = error.localizedDescription
         }
     }
 

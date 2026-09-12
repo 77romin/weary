@@ -592,6 +592,120 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("신고와 차단은 사용자별로 보호되고 콘텐츠를 숨긴다")
+    func reportsAndBlocksRemoteContent() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+        let configuration = try supabaseConfiguration()
+        let targetUser = try await createAnonymousSession(configuration: configuration)
+        let postID = UUID()
+        let listingID = UUID()
+        let marker = "Safety integration \(UUID().uuidString)"
+
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/posts",
+            configuration: configuration,
+            token: targetUser.token,
+            body: [
+                "id": postID.uuidString,
+                "author_id": targetUser.userID.uuidString,
+                "caption": marker,
+                "visibility": "public",
+            ]
+        )
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/market_listings",
+            configuration: configuration,
+            token: targetUser.token,
+            body: [
+                "id": listingID.uuidString,
+                "seller_id": targetUser.userID.uuidString,
+                "title": marker,
+                "description": "안전 기능 검증",
+                "price": 20_000,
+                "brand_snapshot": "WEARy",
+                "category_snapshot": GarmentCategory.top.rawValue,
+                "size_snapshot": "M",
+                "color_hex_snapshot": "998877",
+                "condition": "excellent",
+                "status": "active",
+            ]
+        )
+
+        let safety = SupabaseContentSafetyRepository.shared
+        var capturedError: Error?
+        do {
+            try await safety.submitReport(
+                target: .post,
+                targetID: postID,
+                reason: .inappropriate,
+                details: "통합 테스트 신고"
+            )
+            try await safety.submitReport(
+                target: .post,
+                targetID: postID,
+                reason: .inappropriate,
+                details: "중복 신고"
+            )
+            let reports: [IntegrationReportReference] = try await client
+                .from("content_reports")
+                .select("id")
+                .eq("target_type", value: "post")
+                .eq("target_id", value: postID.uuidString)
+                .execute()
+                .value
+            #expect(reports.count == 1)
+
+            try await safety.setBlocked(userID: targetUser.userID, isBlocked: true)
+            #expect(try await safety.fetchBlockedUserIDs().contains(targetUser.userID))
+            #expect(try await safety.fetchBlockedUsers().contains { $0.id == targetUser.userID })
+
+            let feed = try await SupabaseCommunityFeedRepository.shared.fetchFeed(limit: 100)
+            #expect(!feed.contains { $0.id == postID })
+            let market = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+            #expect(!market.contains { $0.id == listingID })
+
+            let hiddenReportsData = try await restRequest(
+                method: "GET",
+                path: "/rest/v1/content_reports?target_id=eq.\(postID.uuidString)&select=id",
+                configuration: configuration,
+                token: targetUser.token
+            )
+            let hiddenReports = try JSONSerialization.jsonObject(with: hiddenReportsData) as? [[String: Any]]
+            #expect(hiddenReports?.isEmpty == true)
+
+            try await safety.setBlocked(userID: targetUser.userID, isBlocked: false)
+            #expect(!(try await safety.fetchBlockedUserIDs()).contains(targetUser.userID))
+            let restoredFeed = try await SupabaseCommunityFeedRepository.shared.fetchFeed(limit: 100)
+            #expect(restoredFeed.contains { $0.id == postID })
+            let restoredMarket = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+            #expect(restoredMarket.contains { $0.id == listingID })
+        } catch {
+            capturedError = error
+        }
+
+        _ = try? await safety.setBlocked(userID: targetUser.userID, isBlocked: false)
+        _ = try? await safety.removeReport(target: .post, targetID: postID)
+        _ = try? await restRequest(
+            method: "DELETE",
+            path: "/rest/v1/posts?id=eq.\(postID.uuidString)",
+            configuration: configuration,
+            token: targetUser.token
+        )
+        _ = try? await restRequest(
+            method: "DELETE",
+            path: "/rest/v1/market_listings?id=eq.\(listingID.uuidString)",
+            configuration: configuration,
+            token: targetUser.token
+        )
+        if let capturedError { throw capturedError }
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration
@@ -776,6 +890,10 @@ private struct IntegrationMarketFavoriteInsert: Encodable, Sendable {
 
 private struct IntegrationMarketPriceUpdate: Encodable, Sendable {
     let price: Int
+}
+
+private struct IntegrationReportReference: Decodable, Sendable {
+    let id: UUID
 }
 
 private enum TestIntegrationError: Error {

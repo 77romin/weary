@@ -13,6 +13,7 @@ struct ProfileView: View {
     @State private var selectedSocialList: SocialListKind?
     @State private var remoteSocialGraph: CommunitySocialGraphSnapshot?
     @State private var showingAccountProfile = false
+    @State private var showingBlockedUsers = false
 
     var body: some View {
         NavigationStack {
@@ -65,6 +66,21 @@ struct ProfileView: View {
                             MetricPill(value: "\(outfits.count)", label: "착장")
                             MetricPill(value: "\(myPosts.count)", label: "게시물")
                         }
+
+                        Button {
+                            showingBlockedUsers = true
+                        } label: {
+                            HStack {
+                                Label("차단한 사용자 관리", systemImage: "person.crop.circle.badge.xmark")
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(WEARyTheme.secondaryInk)
+                            }
+                            .padding(16)
+                            .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("profile.blockedUsers")
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("이번 달의 발견")
@@ -131,6 +147,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingAccountProfile) {
                 AccountProfileView()
+            }
+            .sheet(isPresented: $showingBlockedUsers) {
+                BlockedUserListView()
             }
             .alert("데모 데이터를 초기화할까요?", isPresented: $showsDemoResetConfirmation) {
                 Button("취소", role: .cancel) {}

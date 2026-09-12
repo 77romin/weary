@@ -60,6 +60,7 @@ actor SupabaseMarketRealtimeRepository {
             "market_listing_verifications",
             "market_listing_favorites",
             "market_conversations",
+            "user_blocks",
         ]
 
         subscriptions = tables.map { table in

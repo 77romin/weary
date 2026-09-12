@@ -50,6 +50,7 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
         }
 
         let currentUserID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let blockedUserIDs = try await SupabaseContentSafetyRepository.shared.fetchBlockedUserIDs()
         let safeLimit = min(max(limit, 1), 100)
         let records: [RemoteMarketListingRecord] = try await client
             .from("market_listings")
@@ -86,8 +87,9 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
             .execute()
             .value
 
-        guard !records.isEmpty else { return [] }
-        let listingIDs = records.map { $0.id.uuidString }
+        let visibleRecords = records.filter { !blockedUserIDs.contains($0.sellerID) }
+        guard !visibleRecords.isEmpty else { return [] }
+        let listingIDs = visibleRecords.map { $0.id.uuidString }
         let verifications: [RemoteMarketVerificationRecord] = try await client
             .from("market_listing_verifications")
             .select(
@@ -101,9 +103,9 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
         )
 
         var snapshots: [MarketListingSnapshot] = []
-        snapshots.reserveCapacity(records.count)
+        snapshots.reserveCapacity(visibleRecords.count)
 
-        for record in records {
+        for record in visibleRecords {
             let verification = verificationByListingID[record.id]
             var galleryImages: [Data] = []
             for media in record.media.sorted(by: { $0.sortOrder < $1.sortOrder }) {
