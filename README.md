@@ -116,6 +116,7 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 
 - Supabase Swift SDK와 개발 프로젝트 연결
 - 이메일 계정 생성·로그인과 재실행 시 영구 세션 복원
+- 가입 확인 메일 재전송과 이메일 인증·비밀번호 재설정 후 앱 딥링크 복귀
 - Google·Kakao·Apple OAuth 로그인 진입 및 앱 딥링크 복귀 처리
 - Auth 사용자 생성 트리거를 통한 `profiles` 행 자동 생성
 - 인증 사용자만 프로필을 읽고 본인 프로필만 수정할 수 있는 RLS
@@ -367,6 +368,18 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
 - [x] 프로토타입 최종 Release 빌드 및 결과 정리
 - [x] 발표 방식 결정에 따라 백업용 화면 녹화 생략
 
+### 2026-09-14 월요일 — 인증·서버 재검증
+
+- [x] Supabase 이메일 인증 Redirect URL과 앱 콜백 연결
+- [x] 가입 확인 메일 재전송과 로그인 오류 안내 개선
+- [x] 로그인 버튼 전체 영역 터치 처리
+- [x] 로컬·원격 마이그레이션 16개 일치 확인
+- [x] Supabase DB 린트 오류 0건 확인
+- [x] iOS 단위 테스트 전체 통과
+- [x] Supabase 실제 서버 통합 테스트 12개 통과
+- [x] 시뮬레이터 UI 테스트 3개 통과
+- [x] 최신 Release 정적 분석·실기기 빌드·설치·실행 확인
+
 ### 프로토타입 이후
 
 - [ ] 사용자 인터뷰로 핵심 흐름과 가치 검증
@@ -397,7 +410,9 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
   - [x] Google·Kakao·Apple OAuth 진입 버튼과 콜백 URL 스킴 구현
   - [x] 변경 불가 아이디, 수정 가능 닉네임과 선택 신체 치수 저장
   - [x] 닉네임을 원격 피드 작성자명과 새 마켓 판매자명에 반영
-  - [ ] Supabase Redirect URL 허용 목록 등록
+  - [x] Supabase Redirect URL 허용 목록 등록
+  - [x] 가입 확인 메일 재전송과 이메일 인증 앱 복귀 처리
+  - [ ] 이메일 인증을 완료한 최초 운영 계정에 `admin` 역할 부여
   - [ ] Google·Kakao·Apple 개발자 콘솔 키 발급 및 Supabase Provider 활성화 _(당장은 보류)_
 - [x] 커뮤니티 게시물·댓글·좋아요·북마크·팔로우 스키마와 RLS 구현
   - [x] 공개·팔로워·비공개 게시물 접근 정책 검증
