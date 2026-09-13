@@ -593,6 +593,15 @@ struct OutfitFlowTests {
         #expect(!AccountInputValidator.isValidHandle("space user"))
     }
 
+    @Test("로그인은 이메일과 유효한 아이디를 모두 허용한다")
+    func validatesLoginIdentifier() {
+        #expect(AccountInputValidator.isValidLoginIdentifier("hello@example.com"))
+        #expect(AccountInputValidator.isValidLoginIdentifier("admin"))
+        #expect(AccountInputValidator.isValidLoginIdentifier("weary.user_01"))
+        #expect(!AccountInputValidator.isValidLoginIdentifier("ab"))
+        #expect(!AccountInputValidator.isValidLoginIdentifier("한글아이디"))
+    }
+
     @Test("새 매물은 닉네임과 무관하게 내 매물로 식별한다")
     func recognizesOwnedListingWithCustomNickname() {
         let listing = MarketListing(

@@ -108,8 +108,8 @@ struct AccountProfileView: View {
             Text("계정")
         } footer: {
             Text(authentication.profile?.handleLocked == true
-                 ? "아이디는 최초 설정 후 변경할 수 없어요. 닉네임은 피드와 판매 글에 표시됩니다."
-                 : "아이디를 이번에 저장하면 이후에는 변경할 수 없어요.")
+                 ? "이메일과 아이디는 가입 후 변경할 수 없어요. 닉네임은 수정할 수 있으며 피드와 판매 글에 표시됩니다."
+                 : "아이디를 이번에 저장하면 이후에는 변경할 수 없어요. 닉네임은 수정할 수 있습니다.")
         }
     }
 
@@ -231,7 +231,10 @@ struct AccountProfileView: View {
                 newPassword = ""
                 passwordConfirmation = ""
             } catch {
-                message = error.localizedDescription
+                let raw = error.localizedDescription
+                message = raw.lowercased().contains("profiles_nickname_key_unique")
+                    ? "이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요."
+                    : raw
             }
             isWorking = false
         }

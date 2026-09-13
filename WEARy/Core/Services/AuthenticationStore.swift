@@ -6,6 +6,30 @@ enum SignUpResult {
     case emailConfirmationRequired
 }
 
+struct AccountAvailability: Decodable, Sendable {
+    let emailAvailable: Bool
+    let handleAvailable: Bool
+    let nicknameAvailable: Bool
+
+    var allAvailable: Bool {
+        emailAvailable && handleAvailable && nicknameAvailable
+    }
+}
+
+private struct AccountAuthRequest: Encodable, Sendable {
+    let action: String
+    let identifier: String?
+    let password: String?
+    let email: String?
+    let handle: String?
+    let nickname: String?
+}
+
+private struct AccountAuthSession: Decodable, Sendable {
+    let accessToken: String
+    let refreshToken: String
+}
+
 enum AccountGender: String, CaseIterable, Identifiable, Codable, Sendable {
     case female
     case male
@@ -206,20 +230,58 @@ final class AuthenticationStore: ObservableObject {
         }
     }
 
-    func signIn(email: String, password: String) async throws {
+    func signIn(identifier: String, password: String) async throws {
         let client = try configuredClient()
         try await discardAnonymousSession(using: client)
         phase = .loading
+        let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         do {
-            let session = try await client.auth.signIn(
-                email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-                password: password
-            )
+            let session: Session
+            if normalizedIdentifier.contains("@") {
+                session = try await client.auth.signIn(
+                    email: normalizedIdentifier,
+                    password: password
+                )
+            } else {
+                let response: AccountAuthSession = try await client.functions.invoke(
+                    "account-auth",
+                    options: FunctionInvokeOptions(body: AccountAuthRequest(
+                        action: "sign_in",
+                        identifier: normalizedIdentifier,
+                        password: password,
+                        email: nil,
+                        handle: nil,
+                        nickname: nil
+                    ))
+                )
+                session = try await client.auth.setSession(
+                    accessToken: response.accessToken,
+                    refreshToken: response.refreshToken
+                )
+            }
             await activate(session)
+        } catch FunctionsError.httpError(let code, _) where code == 400 {
+            phase = .signedOut
+            throw AccountValidationError.invalidCredentials
         } catch {
             phase = .signedOut
             throw error
         }
+    }
+
+    func checkAvailability(email: String, handle: String, nickname: String) async throws -> AccountAvailability {
+        let client = try configuredClient()
+        return try await client.functions.invoke(
+            "account-auth",
+            options: FunctionInvokeOptions(body: AccountAuthRequest(
+                action: "availability",
+                identifier: nil,
+                password: nil,
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                handle: handle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                nickname: nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+            ))
+        )
     }
 
     func signUp(email: String, password: String, handle: String, nickname: String) async throws -> SignUpResult {
@@ -371,11 +433,17 @@ final class AuthenticationStore: ObservableObject {
 
 enum AccountValidationError: LocalizedError {
     case oauthPassword
+    case invalidCredentials
+    case unavailableAccountField
 
     var errorDescription: String? {
         switch self {
         case .oauthPassword:
             "소셜 로그인 계정의 비밀번호는 해당 서비스에서 관리해 주세요."
+        case .invalidCredentials:
+            "이메일 또는 아이디와 비밀번호가 맞지 않아요."
+        case .unavailableAccountField:
+            "중복 확인 결과를 다시 확인해 주세요."
         }
     }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 
 struct AuthenticationView: View {
     @EnvironmentObject private var authentication: AuthenticationStore
-    @State private var email = ""
+    @State private var identifier = ""
     @State private var password = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
@@ -40,7 +40,7 @@ struct AuthenticationView: View {
                 SignUpView()
             }
             .sheet(isPresented: $showingRecovery) {
-                AccountRecoveryView(initialEmail: email)
+                AccountRecoveryView(initialEmail: identifier.contains("@") ? identifier : "")
             }
             .alert("로그인하지 못했어요", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -76,7 +76,7 @@ struct AuthenticationView: View {
 
     private var credentials: some View {
         VStack(spacing: 14) {
-            TextField("이메일 (로그인 아이디)", text: $email)
+            TextField("이메일 또는 아이디", text: $identifier)
                 .textContentType(.username)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
@@ -121,8 +121,8 @@ struct AuthenticationView: View {
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(WEARyTheme.secondaryInk)
-        .disabled(!email.contains("@") || isWorking)
-        .opacity(email.contains("@") ? 1 : 0.45)
+        .disabled(!identifier.contains("@") || isWorking)
+        .opacity(identifier.contains("@") ? 1 : 0.45)
     }
 
     private var socialLogins: some View {
@@ -151,7 +151,7 @@ struct AuthenticationView: View {
     }
 
     private var canLogin: Bool {
-        email.contains("@") && !password.isEmpty && !isWorking
+        AccountInputValidator.isValidLoginIdentifier(identifier) && !password.isEmpty && !isWorking
     }
 
     private func oauthButton(
@@ -185,7 +185,7 @@ struct AuthenticationView: View {
         isWorking = true
         Task { @MainActor in
             do {
-                try await authentication.signIn(email: email, password: password)
+                try await authentication.signIn(identifier: identifier, password: password)
             } catch {
                 errorMessage = friendlyMessage(for: error)
             }
@@ -206,11 +206,11 @@ struct AuthenticationView: View {
     }
 
     private func resendConfirmation() {
-        guard email.contains("@"), !isWorking else { return }
+        guard identifier.contains("@"), !isWorking else { return }
         isWorking = true
         Task { @MainActor in
             do {
-                try await authentication.resendSignUpConfirmation(to: email)
+                try await authentication.resendSignUpConfirmation(to: identifier)
                 confirmationMessage = "가입 확인 메일을 다시 보냈어요. 스팸 메일함도 확인해 주세요."
             } catch {
                 confirmationMessage = friendlyMessage(for: error)
@@ -231,22 +231,43 @@ private struct SignUpView: View {
     @State private var isWorking = false
     @State private var message: String?
     @State private var shouldDismissAfterMessage = false
+    @State private var availability: AccountAvailability?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("아이디", text: $handle)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("signup.handle")
-                    TextField("닉네임", text: $nickname)
-                        .textContentType(.nickname)
                     TextField("이메일", text: $email)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("signup.email")
+                        .onChange(of: email) { _, _ in availability = nil }
+                    TextField("아이디", text: $handle)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("signup.handle")
+                        .onChange(of: handle) { _, _ in availability = nil }
+                    TextField("닉네임", text: $nickname)
+                        .textContentType(.nickname)
+                        .accessibilityIdentifier("signup.nickname")
+                        .onChange(of: nickname) { _, _ in availability = nil }
+                    Button("이메일·아이디·닉네임 중복 확인") {
+                        checkAvailability()
+                    }
+                    .disabled(!canCheckAvailability || isWorking)
+                    .accessibilityIdentifier("signup.checkAvailability")
+                    if let availability {
+                        Label(
+                            availabilityMessage(availability),
+                            systemImage: availability.allAvailable
+                                ? "checkmark.circle.fill"
+                                : "exclamationmark.circle.fill"
+                        )
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(availability.allAvailable ? .green : .red)
+                    }
                     SecureField("비밀번호 (8자 이상)", text: $password)
                         .textContentType(.newPassword)
                     SecureField("비밀번호 확인", text: $passwordConfirmation)
@@ -254,7 +275,7 @@ private struct SignUpView: View {
                 } header: {
                     Text("WEARy 계정")
                 } footer: {
-                    Text("아이디는 프로필 주소로 사용되며 가입 후 바꿀 수 없어요. 영문 소문자, 숫자, 마침표와 밑줄로 3–20자까지 입력해 주세요.")
+                    Text("이메일과 아이디는 가입 후 바꿀 수 없어요. 아이디는 영문 소문자, 숫자, 마침표와 밑줄로 3–20자까지 입력해 주세요. 가입 전에 세 항목의 중복 확인이 필요합니다.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -289,13 +310,50 @@ private struct SignUpView: View {
     }
 
     private var validationMessage: String? {
-        AccountInputValidator.signUpMessage(
+        if let message = AccountInputValidator.signUpMessage(
             handle: handle,
             nickname: nickname,
             email: email,
             password: password,
             confirmation: passwordConfirmation
-        )
+        ) { return message }
+        guard availability?.allAvailable == true else {
+            return "이메일·아이디·닉네임 중복 확인을 완료해 주세요."
+        }
+        return nil
+    }
+
+    private var canCheckAvailability: Bool {
+        AccountInputValidator.isValidHandle(handle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) &&
+            nickname.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 &&
+            email.contains("@")
+    }
+
+    private func availabilityMessage(_ availability: AccountAvailability) -> String {
+        var duplicates: [String] = []
+        if !availability.emailAvailable { duplicates.append("이메일") }
+        if !availability.handleAvailable { duplicates.append("아이디") }
+        if !availability.nicknameAvailable { duplicates.append("닉네임") }
+        return duplicates.isEmpty
+            ? "모두 사용할 수 있어요."
+            : "이미 사용 중: \(duplicates.joined(separator: ", "))"
+    }
+
+    private func checkAvailability() {
+        guard canCheckAvailability, !isWorking else { return }
+        isWorking = true
+        Task { @MainActor in
+            do {
+                availability = try await authentication.checkAvailability(
+                    email: email,
+                    handle: handle,
+                    nickname: nickname
+                )
+            } catch {
+                message = friendlyMessage(for: error)
+            }
+            isWorking = false
+        }
     }
 
     private func submit() {
@@ -303,6 +361,15 @@ private struct SignUpView: View {
         isWorking = true
         Task { @MainActor in
             do {
+                let latestAvailability = try await authentication.checkAvailability(
+                    email: email,
+                    handle: handle,
+                    nickname: nickname
+                )
+                availability = latestAvailability
+                guard latestAvailability.allAvailable else {
+                    throw AccountValidationError.unavailableAccountField
+                }
                 let result = try await authentication.signUp(
                     email: email,
                     password: password,
@@ -339,7 +406,7 @@ private struct AccountRecoveryView: View {
         NavigationStack {
             Form {
                 Section("아이디 찾기") {
-                    Text("개인 이메일로 가입한 경우 이메일 주소가 로그인 아이디예요. 소셜 계정은 해당 Google·Kakao·Apple 버튼으로 로그인해 주세요.")
+                    Text("아이디를 잊어도 가입 이메일로 로그인할 수 있어요. 로그인 후 MY의 내 정보에서 아이디를 확인해 주세요. 소셜 계정은 해당 서비스 버튼으로 로그인합니다.")
                         .foregroundStyle(WEARyTheme.secondaryInk)
                 }
                 Section("비밀번호 재설정") {
@@ -439,6 +506,11 @@ enum AccountInputValidator {
         value.range(of: "^[a-z0-9._]{3,20}$", options: .regularExpression) != nil
     }
 
+    static func isValidLoginIdentifier(_ value: String) -> Bool {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.contains("@") || isValidHandle(normalized)
+    }
+
     static func signUpMessage(
         handle: String,
         nickname: String,
@@ -466,12 +538,18 @@ private func friendlyMessage(for error: Error) -> String {
         lowercased.contains("email rate limit exceeded") {
         return "현재 개발용 메일 발송이 제한되어 있어요. 잠시 후 다시 시도하거나 관리자에게 이메일 인증 설정을 확인해 달라고 요청해 주세요."
     }
-    if lowercased.contains("invalid login credentials") { return "이메일 또는 비밀번호가 맞지 않아요." }
+    if lowercased.contains("invalid login credentials") { return "이메일 또는 아이디와 비밀번호가 맞지 않아요." }
     if lowercased.contains("already registered") || lowercased.contains("already been registered") {
         return "이미 가입된 이메일이에요. 로그인하거나 비밀번호를 재설정해 주세요."
     }
+    if lowercased.contains("profiles_nickname_key_unique") {
+        return "이미 사용 중인 닉네임이에요. 다른 닉네임을 선택해 주세요."
+    }
+    if lowercased.contains("edge function") || lowercased.contains("relay error") {
+        return "계정 서버에 연결하지 못했어요. 네트워크를 확인한 뒤 다시 시도해 주세요."
+    }
     if lowercased.contains("duplicate") || lowercased.contains("profiles_handle") {
-        return "이미 사용 중인 아이디예요. 다른 아이디를 선택해 주세요."
+        return "이미 사용 중인 이메일 또는 아이디예요. 중복 확인 후 다시 시도해 주세요."
     }
     if lowercased.contains("provider is not enabled") || lowercased.contains("unsupported provider") {
         return "아직 Supabase에서 이 소셜 로그인이 설정되지 않았어요."

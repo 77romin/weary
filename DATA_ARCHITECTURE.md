@@ -219,6 +219,7 @@ erDiagram
 
     USER {
         uuid id PK
+        string email UK
         string apple_subject UK
         string status
         datetime created_at
@@ -228,7 +229,7 @@ erDiagram
     PROFILE {
         uuid user_id PK_FK
         string handle UK
-        string display_name
+        string display_name UK
         string bio
         string avatar_url
         datetime updated_at

@@ -5,6 +5,42 @@ import Testing
 
 @Suite("Supabase 수동 통합 검증", .serialized)
 struct SupabaseIntegrationTests {
+    @Test("계정 중복 확인은 동작하고 아이디의 이메일 조회는 외부에 노출하지 않는다")
+    func checksAccountAvailabilityWithoutExposingLoginEmail() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else {
+            return
+        }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+
+        let marker = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let response: IntegrationAccountAvailability = try await client.functions.invoke(
+            "account-auth",
+            options: FunctionInvokeOptions(body: IntegrationAccountAvailabilityRequest(
+                action: "availability",
+                email: "\(marker)@example.com",
+                handle: "u\(marker.prefix(19))",
+                nickname: "통합검증\(marker.prefix(8))"
+            ))
+        )
+        #expect(response.emailAvailable)
+        #expect(response.handleAvailable)
+        #expect(response.nicknameAvailable)
+
+        var privateLookupWasDenied = false
+        do {
+            let _: String? = try await client
+                .rpc("login_email_for_handle", params: ["p_handle": "missing-user"])
+                .execute()
+                .value
+        } catch {
+            privateLookupWasDenied = true
+        }
+        #expect(privateLookupWasDenied)
+    }
+
     @Test("게시물과 이미지를 업로드한 뒤 원격 피드에서 읽는다")
     func publishesPostAndReadsItFromRemoteFeed() async throws {
         guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else {
@@ -936,6 +972,19 @@ struct SupabaseIntegrationTests {
         }
         return data
     }
+}
+
+private struct IntegrationAccountAvailabilityRequest: Encodable, Sendable {
+    let action: String
+    let email: String
+    let handle: String
+    let nickname: String
+}
+
+private struct IntegrationAccountAvailability: Decodable, Sendable {
+    let emailAvailable: Bool
+    let handleAvailable: Bool
+    let nicknameAvailable: Bool
 }
 
 private struct TestSupabaseConfiguration: Sendable {

@@ -27,6 +27,9 @@ final class WEARyUITests: XCTestCase {
         app.buttons["auth.openSignUp"].tap()
         XCTAssertTrue(app.navigationBars["회원가입"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.textFields["signup.handle"].exists)
+        XCTAssertTrue(app.textFields["signup.nickname"].exists)
+        XCTAssertTrue(app.textFields["signup.email"].exists)
+        XCTAssertTrue(app.buttons["signup.checkAvailability"].exists)
         XCTAssertTrue(app.buttons["signup.submit"].exists)
     }
 
