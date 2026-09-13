@@ -218,10 +218,13 @@ private struct ModerationReportDetailView: View {
             }
 
             Section("처리") {
-                if report.status != .reviewing {
+                if report.status == .actioned {
+                    Text("조치 완료 후 상태 변경은 이의 제기 절차에서만 할 수 있어요.")
+                        .foregroundStyle(WEARyTheme.secondaryInk)
+                } else if report.status != .reviewing {
                     actionButton("검토 시작", status: .reviewing)
                 }
-                if report.status != .dismissed {
+                if report.status != .actioned, report.status != .dismissed {
                     actionButton("위반 없음으로 종료", status: .dismissed)
                 }
                 if report.status != .actioned {

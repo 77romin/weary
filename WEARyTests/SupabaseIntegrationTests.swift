@@ -814,6 +814,57 @@ struct SupabaseIntegrationTests {
         )
     }
 
+    @Test("사용자는 운영 알림을 위조할 수 없고 본인 알림만 읽는다")
+    func protectsUserNotices() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        let configuration = try supabaseConfiguration()
+        let regularUser = try await createAnonymousSession(configuration: configuration)
+
+        let noticesData = try await restRequest(
+            method: "GET",
+            path: "/rest/v1/user_notices?select=id,recipient_id",
+            configuration: configuration,
+            token: regularUser.token
+        )
+        let notices = try JSONSerialization.jsonObject(with: noticesData) as? [[String: Any]]
+        #expect(notices?.isEmpty == true)
+
+        var insertWasDenied = false
+        do {
+            _ = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/user_notices",
+                configuration: configuration,
+                token: regularUser.token,
+                body: [
+                    "recipient_id": regularUser.userID.uuidString,
+                    "kind": "report_result",
+                    "title": "위조 알림",
+                    "body": "사용자가 직접 만들 수 없어야 합니다.",
+                ]
+            )
+        } catch {
+            insertWasDenied = true
+        }
+        #expect(insertWasDenied)
+
+        _ = try await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/mark_user_notice_read",
+            configuration: configuration,
+            token: regularUser.token,
+            body: ["p_notice_id": UUID().uuidString]
+        )
+
+        _ = try? await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/delete_current_user",
+            configuration: configuration,
+            token: regularUser.token,
+            body: [:]
+        )
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration

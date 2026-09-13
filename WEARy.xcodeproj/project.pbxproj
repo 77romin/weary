@@ -35,6 +35,7 @@
 		73DFF9DD177F48648ECF99C3 /* Garment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95B430ABCABDD13607100A /* Garment.swift */; };
 		751E9369D68885EF00CE8056 /* CommunityFeedRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2312D75F5627C5342577B5 /* CommunityFeedRepository.swift */; };
 		7C06A6D65488CCA798BC9143 /* WEARyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE9CF6B3115EC06903CC4CD /* WEARyTheme.swift */; };
+		7E066CC4873DCA6A2D980436 /* UserNoticeRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E462FCBDF9E3E12E9D3C2F0 /* UserNoticeRepository.swift */; };
 		8ACDE1A80D759B41221FFC4C /* WEARyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7D1E359601AB7551718EEA /* WEARyUITests.swift */; };
 		8FEE8FB4FB02C415342E37D2 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54AD0DF25893AE52312C3C0B /* OnboardingView.swift */; };
 		910CB1F1682B2CBA66F66FFD /* Outfit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F669DC81CDA5EC68164402B /* Outfit.swift */; };
@@ -43,6 +44,7 @@
 		9ABC4E682D2153E0737B1A71 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9286AC6A777DAF8CB1C30552 /* LaunchScreen.storyboard */; };
 		AAB09A3C8C75C4DE40D1C517 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2128FB884A55142F4E78D46E /* FeedView.swift */; };
 		BA850FB60E804B398FEF164B /* WardrobeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39A1BD1D09B5751BB982B218 /* WardrobeView.swift */; };
+		BED34F7C8CAB48739C0F4D40 /* UserNoticesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9C1A211A7C2E0E35167C6E /* UserNoticesView.swift */; };
 		C0082FE33DE4C5193EB7585C /* SupabaseIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01F4B5A747A653FF2CD15627 /* SupabaseIntegrationTests.swift */; };
 		C4DB425FA0C1A7339A4EACBC /* MarketChatRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA915BA4BB196F5D0E1E195E /* MarketChatRepository.swift */; };
 		CD21D57279484C1DBFCE3F0A /* ContentReportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A179596778536DE75FFB8E21 /* ContentReportSheet.swift */; };
@@ -78,6 +80,7 @@
 /* Begin PBXFileReference section */
 		01F4B5A747A653FF2CD15627 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
 		0BBA0D4D242C9ACFF3DD4A1C /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
+		1E462FCBDF9E3E12E9D3C2F0 /* UserNoticeRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserNoticeRepository.swift; sourceTree = "<group>"; };
 		20FFF7D199540E2CA4FC1466 /* AccountDeletionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionRepository.swift; sourceTree = "<group>"; };
 		2128FB884A55142F4E78D46E /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
 		22AD6B04DD18E16C7DF385DB /* WEARyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WEARyApp.swift; sourceTree = "<group>"; };
@@ -86,6 +89,7 @@
 		2C3C149F4F711AB873F2E153 /* GarmentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GarmentDetailView.swift; sourceTree = "<group>"; };
 		34A3E80602847222DDA58904 /* MarketView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketView.swift; sourceTree = "<group>"; };
 		39A1BD1D09B5751BB982B218 /* WardrobeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WardrobeView.swift; sourceTree = "<group>"; };
+		3A9C1A211A7C2E0E35167C6E /* UserNoticesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserNoticesView.swift; sourceTree = "<group>"; };
 		3F8201B35CDC2D7F227B435F /* GarmentArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GarmentArtwork.swift; sourceTree = "<group>"; };
 		4F669DC81CDA5EC68164402B /* Outfit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Outfit.swift; sourceTree = "<group>"; };
 		4FE9CF6B3115EC06903CC4CD /* WEARyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WEARyTheme.swift; sourceTree = "<group>"; };
@@ -160,6 +164,7 @@
 				8D92D420F6F2A37784C62FBD /* ModerationReportsView.swift */,
 				76EFCC9181CDF1F27AC45F90 /* MonthOutfitCalendarView.swift */,
 				71EA2D10AF32EF2F65BC18BD /* ProfileView.swift */,
+				3A9C1A211A7C2E0E35167C6E /* UserNoticesView.swift */,
 				7EABE584631562BA3546A6F4 /* WardrobeInsightsView.swift */,
 			);
 			path = Profile;
@@ -279,6 +284,7 @@
 				6C53731B5AF953E1BC4366C5 /* OutfitAnalyzing.swift */,
 				54A4B8F85505A05A4CA45B18 /* OutfitRecordService.swift */,
 				85EDC6B33EF1A9670BF5CBCD /* SupabaseService.swift */,
+				1E462FCBDF9E3E12E9D3C2F0 /* UserNoticeRepository.swift */,
 				F715E8814192EB9396202EFA /* WardrobeInsights.swift */,
 			);
 			path = Services;
@@ -555,6 +561,8 @@
 				F9E583AF2461FC6F15B553A4 /* RootTabView.swift in Sources */,
 				330F17106A6BC2C300502282 /* SampleDataSeeder.swift in Sources */,
 				3CAC64E8405D40AD9815E64E /* SupabaseService.swift in Sources */,
+				7E066CC4873DCA6A2D980436 /* UserNoticeRepository.swift in Sources */,
+				BED34F7C8CAB48739C0F4D40 /* UserNoticesView.swift in Sources */,
 				6271A2A1CE369A5C51B74703 /* WEARyApp.swift in Sources */,
 				7C06A6D65488CCA798BC9143 /* WEARyTheme.swift in Sources */,
 				91DD7082A40AE540FBCA393C /* WardrobeInsights.swift in Sources */,

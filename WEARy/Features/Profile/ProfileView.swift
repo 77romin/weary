@@ -14,6 +14,8 @@ struct ProfileView: View {
     @State private var remoteSocialGraph: CommunitySocialGraphSnapshot?
     @State private var showingAccountProfile = false
     @State private var showingBlockedUsers = false
+    @State private var showingNotices = false
+    @State private var unreadNoticeCount = 0
 
     var body: some View {
         NavigationStack {
@@ -139,6 +141,22 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("MY")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingNotices = true
+                    } label: {
+                        Image(systemName: unreadNoticeCount > 0 ? "bell.badge.fill" : "bell")
+                            .foregroundStyle(unreadNoticeCount > 0 ? WEARyTheme.coral : WEARyTheme.ink)
+                    }
+                    .accessibilityLabel(
+                        unreadNoticeCount > 0
+                        ? "읽지 않은 알림 \(unreadNoticeCount)개"
+                        : "알림"
+                    )
+                    .accessibilityIdentifier("profile.notices")
+                }
+            }
             .sheet(item: $selectedSocialList) { kind in
                 SocialUserListView(
                     title: kind == .followers ? "팔로워" : "팔로잉",
@@ -150,6 +168,11 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingBlockedUsers) {
                 BlockedUserListView()
+            }
+            .sheet(isPresented: $showingNotices, onDismiss: {
+                Task { await loadUnreadNoticeCount() }
+            }) {
+                UserNoticesView()
             }
             .alert("데모 데이터를 초기화할까요?", isPresented: $showsDemoResetConfirmation) {
                 Button("취소", role: .cancel) {}
@@ -167,6 +190,7 @@ struct ProfileView: View {
             }
             .task {
                 await loadRemoteSocialGraph()
+                await loadUnreadNoticeCount()
             }
         }
     }
@@ -239,6 +263,20 @@ struct ProfileView: View {
         } catch {
 #if DEBUG
             print("원격 팔로우 목록 동기화 실패, 로컬 목록을 유지합니다: \(error.localizedDescription)")
+#endif
+        }
+    }
+
+    @MainActor
+    private func loadUnreadNoticeCount() async {
+        do {
+            unreadNoticeCount = try await SupabaseUserNoticeRepository.shared
+                .fetchNotices(limit: 100)
+                .filter { $0.readAt == nil }
+                .count
+        } catch {
+#if DEBUG
+            print("사용자 알림 동기화 실패: \(error.localizedDescription)")
 #endif
         }
     }
