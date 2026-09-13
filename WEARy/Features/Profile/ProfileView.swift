@@ -5,6 +5,7 @@ struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var authentication: AuthenticationStore
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
     @Query private var communityPosts: [CommunityPost]
@@ -69,6 +70,23 @@ struct ProfileView: View {
                             MetricPill(value: "\(myPosts.count)", label: "게시물")
                         }
 
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("소셜 데이터")
+                                .font(.headline)
+                            Picker("소셜 데이터", selection: $contentModeRaw) {
+                                ForEach(SocialContentMode.allCases) { mode in
+                                    Text(mode.title).tag(mode.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityIdentifier("profile.contentMode")
+                            Text(contentMode.description)
+                                .font(.caption)
+                                .foregroundStyle(WEARyTheme.secondaryInk)
+                        }
+                        .padding(16)
+                        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+
                         Button {
                             showingBlockedUsers = true
                         } label: {
@@ -120,6 +138,7 @@ struct ProfileView: View {
                                 showsDemoResetConfirmation = true
                             }
                             .buttonStyle(.bordered)
+                            .disabled(contentMode != .demo)
                             .accessibilityIdentifier("profile.resetDemo")
 
                             Button {
@@ -137,7 +156,11 @@ struct ProfileView: View {
                     .padding(20)
                 }
                 .refreshable {
-                    await loadRemoteSocialGraph()
+                    if contentMode == .live {
+                        await loadRemoteSocialGraph()
+                    } else {
+                        SampleDataSeeder.seedIfNeeded(in: modelContext)
+                    }
                 }
             }
             .navigationTitle("MY")
@@ -188,15 +211,27 @@ struct ProfileView: View {
             } message: {
                 Text(demoResetMessage ?? "")
             }
-            .task {
-                await loadRemoteSocialGraph()
-                await loadUnreadNoticeCount()
+            .task(id: contentModeRaw) {
+                if contentMode == .live {
+                    await loadRemoteSocialGraph()
+                    await loadUnreadNoticeCount()
+                } else {
+                    remoteSocialGraph = nil
+                    unreadNoticeCount = 0
+                }
             }
         }
     }
 
     private var myPosts: [CommunityPost] {
-        communityPosts.filter { $0.authorHandle == "my.weary" }
+        communityPosts.filter {
+            $0.authorHandle == "my.weary" &&
+                (contentMode == .live ? $0.isSyncedFromServer == true : $0.isSyncedFromServer != true)
+        }
+    }
+
+    private var contentMode: SocialContentMode {
+        SocialContentMode(rawValue: contentModeRaw) ?? .live
     }
 
     private func resetDemoData() {
@@ -227,13 +262,14 @@ struct ProfileView: View {
 
     private var followingUsers: [SocialUser] {
         var seen = Set<String>()
-        var users = (remoteSocialGraph?.following ?? []).compactMap { user -> SocialUser? in
+        var users = (contentMode == .live ? remoteSocialGraph?.following ?? [] : []).compactMap { user -> SocialUser? in
             guard seen.insert(user.handle).inserted else { return nil }
             return SocialUser(snapshot: user)
         }
         users += communityPosts.compactMap { post in
             guard post.isFollowing,
                   post.authorHandle != "my.weary",
+                  (contentMode == .live ? post.isSyncedFromServer == true : post.isSyncedFromServer != true),
                   seen.insert(post.authorHandle).inserted else { return nil }
             return SocialUser(
                 name: post.authorName,
@@ -246,14 +282,16 @@ struct ProfileView: View {
     }
 
     private var followerUsers: [SocialUser] {
-        guard let remoteSocialGraph else {
+        guard contentMode == .live else {
             return [
             SocialUser(name: "서연", handle: "seoyeon.daily", initials: "SY", accentHex: "A7B9CE"),
             SocialUser(name: "민서", handle: "color.minseo", initials: "MS", accentHex: "FF765F"),
             SocialUser(name: "도윤", handle: "doyoon.fit", initials: "DY", accentHex: "C7F25B"),
             ]
         }
-        return remoteSocialGraph.followers.map(SocialUser.init(snapshot:)).sorted { $0.name < $1.name }
+        return (remoteSocialGraph?.followers ?? [])
+            .map(SocialUser.init(snapshot:))
+            .sorted { $0.name < $1.name }
     }
 
     @MainActor

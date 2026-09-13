@@ -24,6 +24,13 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["auth.oauth.apple"].exists)
         XCTAssertTrue(app.buttons["auth.openSignUp"].exists)
 
+        app.buttons["아이디 / 비밀번호 찾기"].tap()
+        XCTAssertTrue(app.navigationBars["계정 찾기"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["recovery.email"].exists)
+        XCTAssertTrue(app.buttons["recovery.handle"].exists)
+        XCTAssertTrue(app.buttons["recovery.password"].exists)
+        app.navigationBars["계정 찾기"].buttons["완료"].tap()
+
         app.buttons["auth.openSignUp"].tap()
         XCTAssertTrue(app.navigationBars["회원가입"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.textFields["signup.handle"].exists)
@@ -64,6 +71,10 @@ final class WEARyUITests: XCTestCase {
         let app = launchApp()
         app.tabBars.buttons["피드"].tap()
         XCTAssertTrue(app.navigationBars["!WEARy"].waitForExistence(timeout: 3))
+        XCTAssertGreaterThan(
+            app.descendants(matching: .any).matching(identifier: "feed.contentMode").count,
+            0
+        )
         XCTAssertTrue(app.buttons["feed.logo"].exists)
         XCTAssertTrue(app.staticTexts["서연"].waitForExistence(timeout: 3))
         XCTAssertGreaterThan(
@@ -189,6 +200,7 @@ final class WEARyUITests: XCTestCase {
         app.tabBars.buttons["MY"].tap()
 
         let today = app.buttons["calendar.today"]
+        for _ in 0..<5 where !today.exists { app.swipeUp() }
         XCTAssertTrue(today.waitForExistence(timeout: 3))
         for _ in 0..<5 where !today.isHittable { app.swipeUp() }
         XCTAssertTrue(today.isHittable)

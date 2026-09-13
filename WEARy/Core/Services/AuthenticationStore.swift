@@ -202,8 +202,12 @@ final class AuthenticationStore: ObservableObject {
     @Published private(set) var email: String?
     @Published private(set) var isPasswordAccount = false
     @Published var requiresPasswordUpdate = false
+    @Published var accountNotice: String?
 
     private var observerTask: Task<Void, Never>?
+    private let pendingConfirmationKey = "auth.pendingEmailConfirmation"
+    private let pendingHandleRecoveryKey = "auth.pendingHandleRecovery"
+    private let pendingPasswordRecoveryKey = "auth.pendingPasswordRecovery"
 
     var displayName: String { profile?.displayName ?? "나의 WEARy" }
     var handle: String? { profile?.handle }
@@ -260,6 +264,7 @@ final class AuthenticationStore: ObservableObject {
                 )
             }
             await activate(session)
+            clearPendingLinkPurpose()
         } catch FunctionsError.httpError(let code, _) where code == 400 {
             phase = .signedOut
             throw AccountValidationError.invalidCredentials
@@ -304,8 +309,10 @@ final class AuthenticationStore: ObservableObject {
             )
             if let session = response.session {
                 await activate(session)
+                clearPendingLinkPurpose()
                 return .signedIn
             }
+            setPendingLinkPurpose(pendingConfirmationKey)
             phase = .signedOut
             return .emailConfirmationRequired
         } catch {
@@ -324,6 +331,7 @@ final class AuthenticationStore: ObservableObject {
                 redirectTo: SupabaseService.authRedirectURL
             )
             await activate(session)
+            clearPendingLinkPurpose()
         } catch {
             phase = .signedOut
             throw error
@@ -336,6 +344,17 @@ final class AuthenticationStore: ObservableObject {
             email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             redirectTo: SupabaseService.authRedirectURL
         )
+        setPendingLinkPurpose(pendingPasswordRecoveryKey)
+    }
+
+    func sendHandleRecovery(to email: String) async throws {
+        let client = try configuredClient()
+        try await client.auth.signInWithOTP(
+            email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            redirectTo: SupabaseService.authRedirectURL,
+            shouldCreateUser: false
+        )
+        setPendingLinkPurpose(pendingHandleRecoveryKey)
     }
 
     func resendSignUpConfirmation(to email: String) async throws {
@@ -345,6 +364,7 @@ final class AuthenticationStore: ObservableObject {
             type: .signup,
             emailRedirectTo: SupabaseService.authRedirectURL
         )
+        setPendingLinkPurpose(pendingConfirmationKey)
     }
 
     func updatePassword(_ password: String) async throws {
@@ -352,6 +372,39 @@ final class AuthenticationStore: ObservableObject {
         guard isPasswordAccount else { throw AccountValidationError.oauthPassword }
         _ = try await client.auth.update(user: UserAttributes(password: password))
         requiresPasswordUpdate = false
+        UserDefaults.standard.removeObject(forKey: pendingPasswordRecoveryKey)
+        accountNotice = "새 비밀번호로 변경했어요. 다음 로그인부터 새 비밀번호를 사용해 주세요."
+    }
+
+    func handleIncomingURL(_ url: URL) async {
+        guard url.scheme?.lowercased() == SupabaseService.authRedirectURL.scheme,
+              let client = SupabaseService.client else { return }
+        phase = .loading
+        do {
+            let session = try await client.auth.session(from: url)
+            await activate(session)
+
+            let isRecoveryURL = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .contains(where: { $0.name == "type" && $0.value == "recovery" }) == true
+            if isRecoveryURL || UserDefaults.standard.bool(forKey: pendingPasswordRecoveryKey) {
+                clearPendingLinkPurpose()
+                requiresPasswordUpdate = true
+            } else if UserDefaults.standard.bool(forKey: pendingHandleRecoveryKey) {
+                clearPendingLinkPurpose()
+                let recoveredHandle = profile?.handle.map { "@\($0)" } ?? "MY의 내 정보"
+                accountNotice = "본인 확인이 완료됐어요. 아이디는 \(recoveredHandle)에서 확인할 수 있어요."
+            } else if UserDefaults.standard.bool(forKey: pendingConfirmationKey) {
+                clearPendingLinkPurpose()
+                accountNotice = "이메일 인증이 완료됐어요. WEARy에 로그인했습니다."
+            }
+        } catch {
+            clearPendingLinkPurpose()
+            if (try? await client.auth.session) == nil {
+                phase = .signedOut
+            }
+            accountNotice = Self.deepLinkFailureMessage(for: error)
+        }
     }
 
     func refreshProfile() async throws {
@@ -422,6 +475,28 @@ final class AuthenticationStore: ObservableObject {
         requiresPasswordUpdate = false
         await SupabaseSessionManager.shared.update(userID: nil)
         phase = .signedOut
+    }
+
+    private static func deepLinkFailureMessage(for error: Error) -> String {
+        let message = error.localizedDescription.lowercased()
+        if message.contains("expired") || message.contains("otp_expired") {
+            return "인증 링크가 만료됐어요. 로그인 화면에서 메일을 다시 요청해 주세요."
+        }
+        if message.contains("access_denied") || message.contains("invalid") {
+            return "인증 링크가 유효하지 않아요. 가장 최근에 받은 메일의 링크를 사용해 주세요."
+        }
+        return "인증 링크를 처리하지 못했어요. 네트워크를 확인한 뒤 메일을 다시 요청해 주세요."
+    }
+
+    private func setPendingLinkPurpose(_ key: String) {
+        clearPendingLinkPurpose()
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
+    private func clearPendingLinkPurpose() {
+        UserDefaults.standard.removeObject(forKey: pendingConfirmationKey)
+        UserDefaults.standard.removeObject(forKey: pendingHandleRecoveryKey)
+        UserDefaults.standard.removeObject(forKey: pendingPasswordRecoveryKey)
     }
 
     static func initials(for name: String) -> String {

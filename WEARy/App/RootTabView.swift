@@ -1,5 +1,28 @@
 import SwiftUI
 
+enum SocialContentMode: String, CaseIterable, Identifiable {
+    case live
+    case demo
+
+    static let storageKey = "socialContentMode"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .live: "실서버"
+        case .demo: "데모"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .live: "친구들과 실제로 공유되는 데이터"
+        case .demo: "기기에만 저장된 발표용 샘플"
+        }
+    }
+}
+
 struct RootTabView: View {
     @State private var selectedTab: AppTab = .feed
 

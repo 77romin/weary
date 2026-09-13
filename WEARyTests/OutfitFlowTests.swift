@@ -6,6 +6,13 @@ import Testing
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("소셜 데이터 모드는 실서버와 데모를 명확히 구분한다")
+    func socialContentModesAreDistinct() {
+        #expect(SocialContentMode.live.title == "실서버")
+        #expect(SocialContentMode.demo.title == "데모")
+        #expect(SocialContentMode.live.description != SocialContentMode.demo.description)
+    }
+
     @Test("누끼 이미지는 보이는 옷 영역에 맞춰 투명 여백을 자른다")
     func cutoutImageCropsTransparentMargins() throws {
         let width = 100

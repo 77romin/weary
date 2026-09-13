@@ -4,6 +4,7 @@ import SwiftUI
 struct FeedView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \CommunityPost.createdAt, order: .reverse) private var posts: [CommunityPost]
+    @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @State private var selectedTopic = "전체"
     @State private var showingComposer = false
     @State private var isRefreshing = false
@@ -18,9 +19,20 @@ struct FeedView: View {
     private let feedTopAnchor = "feed.top"
     private let remotePageSize = 15
 
+    private var contentMode: SocialContentMode {
+        SocialContentMode(rawValue: contentModeRaw) ?? .live
+    }
+
+    private var visiblePosts: [CommunityPost] {
+        switch contentMode {
+        case .live: posts.filter { $0.isSyncedFromServer == true }
+        case .demo: posts.filter { $0.isSyncedFromServer != true }
+        }
+    }
+
     private var filteredPosts: [CommunityPost] {
-        guard selectedTopic != "전체" else { return posts }
-        return posts.filter { postMatchesTopic($0, topic: selectedTopic) }
+        guard selectedTopic != "전체" else { return visiblePosts }
+        return visiblePosts.filter { postMatchesTopic($0, topic: selectedTopic) }
     }
 
     var body: some View {
@@ -28,11 +40,13 @@ struct FeedView: View {
             ScrollViewReader { proxy in
                 ZStack {
                     WEARyTheme.canvas.ignoresSafeArea()
-                    if posts.isEmpty {
+                    if visiblePosts.isEmpty {
                         ContentUnavailableView(
-                            "첫 스타일을 기다리고 있어요",
-                            systemImage: "rectangle.stack.badge.plus",
-                            description: Text("착장을 기록하거나 + 버튼에서 첫 게시물을 작성해 보세요.")
+                            contentMode == .live ? "아직 서버 게시물이 없어요" : "데모 게시물이 없어요",
+                            systemImage: contentMode == .live ? "network" : "sparkles",
+                            description: Text(contentMode == .live
+                                ? "친구와 첫 실제 스타일을 공유해 보세요. 데모 데이터는 MY에서 따로 볼 수 있어요."
+                                : "MY에서 데모 데이터를 초기화하면 발표용 샘플을 다시 만들 수 있어요.")
                         )
                     } else {
                         ScrollView {
@@ -41,6 +55,7 @@ struct FeedView: View {
                             .id(feedTopAnchor)
 
                             LazyVStack(spacing: 18) {
+                                contentModeBadge
                                 styleTopics
                                 if filteredPosts.isEmpty {
                                     ContentUnavailableView(
@@ -108,8 +123,14 @@ struct FeedView: View {
             .sheet(isPresented: $showingComposer) {
                 CreateCommunityPostView()
             }
-            .task {
-                await runRemoteFeed()
+            .task(id: contentModeRaw) {
+                if contentMode == .live {
+                    await runRemoteFeed()
+                } else {
+                    hasMoreRemotePosts = false
+                    remoteCursor = nil
+                    await SupabaseCommunityFeedRealtimeRepository.shared.stop()
+                }
             }
         }
     }
@@ -125,9 +146,28 @@ struct FeedView: View {
         guard !isRefreshing else { return }
         isRefreshing = true
         refreshCount += 1
-        SampleDataSeeder.seedIfNeeded(in: modelContext)
-        await refreshRemoteWindow()
+        if contentMode == .live {
+            await refreshRemoteWindow()
+        } else {
+            SampleDataSeeder.seedIfNeeded(in: modelContext)
+        }
         isRefreshing = false
+    }
+
+    private var contentModeBadge: some View {
+        HStack(spacing: 8) {
+            Image(systemName: contentMode == .live ? "network" : "sparkles")
+            Text(contentMode.title)
+                .fontWeight(.bold)
+            Text(contentMode.description)
+                .foregroundStyle(WEARyTheme.secondaryInk)
+            Spacer()
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 13))
+        .accessibilityIdentifier("feed.contentMode")
     }
 
     @MainActor

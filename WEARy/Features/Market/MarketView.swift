@@ -4,26 +4,41 @@ import SwiftUI
 struct MarketView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MarketListing.createdAt, order: .reverse) private var listings: [MarketListing]
+    @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @State private var showingSellFlow = false
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    private var contentMode: SocialContentMode {
+        SocialContentMode(rawValue: contentModeRaw) ?? .live
+    }
+
+    private var visibleListings: [MarketListing] {
+        switch contentMode {
+        case .live: listings.filter { $0.isSyncedFromServer == true }
+        case .demo: listings.filter { $0.isSyncedFromServer != true }
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 WEARyTheme.canvas.ignoresSafeArea()
-                if listings.isEmpty {
+                if visibleListings.isEmpty {
                     ContentUnavailableView(
-                        "등록된 옷이 없어요",
-                        systemImage: "bag.badge.plus",
-                        description: Text("입지 않는 옷을 다음 옷장으로 보내보세요.")
+                        contentMode == .live ? "아직 서버 매물이 없어요" : "데모 매물이 없어요",
+                        systemImage: contentMode == .live ? "network" : "sparkles",
+                        description: Text(contentMode == .live
+                            ? "판매 버튼으로 친구들에게 보일 첫 매물을 등록해 보세요."
+                            : "MY에서 데모 데이터를 초기화하면 발표용 매물을 다시 만들 수 있어요.")
                     )
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
+                            contentModeBadge
                             Text("옷장에서 다음 옷장으로")
                                 .font(.system(.title2, design: .rounded, weight: .bold))
                             LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(listings) { listing in
+                                ForEach(visibleListings) { listing in
                                     NavigationLink(value: listing) {
                                         MarketListingCard(listing: listing)
                                     }
@@ -33,7 +48,13 @@ struct MarketView: View {
                         }
                         .padding(18)
                     }
-                    .refreshable { await syncRemoteMarket() }
+                    .refreshable {
+                        if contentMode == .live {
+                            await syncRemoteMarket()
+                        } else {
+                            SampleDataSeeder.seedIfNeeded(in: modelContext)
+                        }
+                    }
                 }
             }
             .navigationTitle("마켓")
@@ -46,8 +67,28 @@ struct MarketView: View {
                 MarketListingDetailView(listing: listing)
             }
             .sheet(isPresented: $showingSellFlow) { SellGarmentPicker() }
-            .task { await runRemoteMarket() }
+            .task(id: contentModeRaw) {
+                if contentMode == .live {
+                    await runRemoteMarket()
+                } else {
+                    await SupabaseMarketRealtimeRepository.shared.stop()
+                }
+            }
         }
+    }
+
+    private var contentModeBadge: some View {
+        HStack(spacing: 8) {
+            Image(systemName: contentMode == .live ? "network" : "sparkles")
+            Text(contentMode.title).fontWeight(.bold)
+            Text(contentMode.description).foregroundStyle(WEARyTheme.secondaryInk)
+            Spacer()
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 13))
+        .accessibilityIdentifier("market.contentMode")
     }
 
     @MainActor

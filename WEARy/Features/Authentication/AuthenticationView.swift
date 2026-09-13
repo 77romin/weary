@@ -397,6 +397,7 @@ private struct AccountRecoveryView: View {
     @State private var email: String
     @State private var isWorking = false
     @State private var message: String?
+    @State private var messageTitle = "계정 찾기"
 
     init(initialEmail: String) {
         _email = State(initialValue: initialEmail)
@@ -405,17 +406,26 @@ private struct AccountRecoveryView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("아이디 찾기") {
-                    Text("아이디를 잊어도 가입 이메일로 로그인할 수 있어요. 로그인 후 MY의 내 정보에서 아이디를 확인해 주세요. 소셜 계정은 해당 서비스 버튼으로 로그인합니다.")
-                        .foregroundStyle(WEARyTheme.secondaryInk)
-                }
-                Section("비밀번호 재설정") {
+                Section("본인 확인") {
                     TextField("가입한 이메일", text: $email)
+                        .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("recovery.email")
+                    Text("아이디 찾기는 가입 이메일로 본인 확인 링크를 보냅니다. 링크를 누르면 앱에서 아이디를 안전하게 확인할 수 있어요.")
+                        .foregroundStyle(WEARyTheme.secondaryInk)
+                    Button("아이디 확인 메일 보내기") { sendHandleRecovery() }
+                        .disabled(!canSubmit)
+                        .accessibilityIdentifier("recovery.handle")
+                }
+                Section("비밀번호 재설정") {
                     Button("재설정 메일 보내기") { sendReset() }
-                        .disabled(!email.contains("@") || isWorking)
+                        .disabled(!canSubmit)
+                        .accessibilityIdentifier("recovery.password")
+                    Text("가장 최근에 받은 링크만 사용할 수 있어요. 링크가 만료되면 이 화면에서 다시 요청해 주세요.")
+                        .font(.footnote)
+                        .foregroundStyle(WEARyTheme.secondaryInk)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -425,7 +435,7 @@ private struct AccountRecoveryView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("완료") { dismiss() } }
             }
-            .alert("비밀번호 재설정", isPresented: Binding(
+            .alert(messageTitle, isPresented: Binding(
                 get: { message != nil },
                 set: { if !$0 { message = nil } }
             )) {
@@ -436,13 +446,36 @@ private struct AccountRecoveryView: View {
         }
     }
 
+    private var canSubmit: Bool {
+        email.contains("@") && !isWorking
+    }
+
+    private func sendHandleRecovery() {
+        guard canSubmit else { return }
+        isWorking = true
+        Task { @MainActor in
+            do {
+                try await authentication.sendHandleRecovery(to: email)
+                messageTitle = "아이디 찾기"
+                message = "가입 여부와 관계없이 요청을 접수했어요. 받은 링크를 이 아이폰에서 열어 주세요."
+            } catch {
+                messageTitle = "메일을 보내지 못했어요"
+                message = friendlyMessage(for: error)
+            }
+            isWorking = false
+        }
+    }
+
     private func sendReset() {
+        guard canSubmit else { return }
         isWorking = true
         Task { @MainActor in
             do {
                 try await authentication.sendPasswordReset(to: email)
+                messageTitle = "비밀번호 재설정"
                 message = "가입 여부와 관계없이 요청을 접수했어요. 메일함을 확인해 주세요."
             } catch {
+                messageTitle = "메일을 보내지 못했어요"
                 message = friendlyMessage(for: error)
             }
             isWorking = false
@@ -533,6 +566,15 @@ private func friendlyMessage(for error: Error) -> String {
     let lowercased = raw.lowercased()
     if lowercased.contains("email not confirmed") {
         return "이메일 인증이 아직 완료되지 않았어요. 가입 확인 메일의 링크를 누른 뒤 다시 로그인해 주세요."
+    }
+    if lowercased.contains("otp_expired") || lowercased.contains("expired") {
+        return "인증 링크가 만료됐어요. 가장 최근 메일을 사용하거나 새 메일을 요청해 주세요."
+    }
+    if lowercased.contains("network") || lowercased.contains("offline") || lowercased.contains("internet") {
+        return "인터넷 연결을 확인한 뒤 다시 시도해 주세요."
+    }
+    if lowercased.contains("invalid email") {
+        return "이메일 형식을 확인해 주세요."
     }
     if lowercased.contains("email address not authorized") ||
         lowercased.contains("email rate limit exceeded") {

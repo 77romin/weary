@@ -64,6 +64,12 @@ private struct AppEntryView: View {
         }
         .task {
             guard isPreparingApp else { return }
+            if isUITesting {
+                UserDefaults.standard.set(
+                    SocialContentMode.demo.rawValue,
+                    forKey: SocialContentMode.storageKey
+                )
+            }
             if !isUITesting { await authentication.bootstrap() }
             SampleDataSeeder.seedIfNeeded(in: modelContext)
             if !isUITesting {
@@ -74,10 +80,18 @@ private struct AppEntryView: View {
             }
         }
         .onOpenURL { url in
-            SupabaseService.client?.handle(url)
+            Task { await authentication.handleIncomingURL(url) }
         }
         .sheet(isPresented: $authentication.requiresPasswordUpdate) {
             PasswordUpdateView()
+        }
+        .alert("계정 안내", isPresented: Binding(
+            get: { authentication.accountNotice != nil },
+            set: { if !$0 { authentication.accountNotice = nil } }
+        )) {
+            Button("확인", role: .cancel) { authentication.accountNotice = nil }
+        } message: {
+            Text(authentication.accountNotice ?? "")
         }
     }
 
