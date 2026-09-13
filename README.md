@@ -148,6 +148,7 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 - 구매자 채팅 작성, 판매자의 매물별 대화 목록과 실시간 메시지 수신
 - 게시물·매물 신고 접수와 사용자별 비공개 신고·차단 데이터 RLS
 - 차단 사용자의 원격 피드·매물·소셜 목록 제외와 MY 차단 해제 관리
+- MY에서 본인 확인 문구를 거쳐 Storage 이미지, Supabase 계정·연결 데이터와 기기 로컬 데이터를 삭제하는 계정 탈퇴
 
 피드 화면은 로컬 샘플을 유지하면서 Supabase의 최신 원격 게시물을 15개씩 이어서 표시합니다. 새 서버 변경이 도착하면 현재까지 읽은 범위를 갱신하고, 다음 페이지는 기존 원격·로컬 캐시를 지우지 않고 병합합니다. 네트워크가 실패하면 마지막 캐시와 로컬 피드를 그대로 보여 줍니다. 새 게시물과 공개 이미지·아이템, 원격 게시물의 좋아요·댓글·저장·팔로우는 실제 서버에 저장됩니다. 발표용 샘플 게시물은 네트워크와 무관하게 기존 로컬 동작을 유지합니다.
 
@@ -168,12 +169,13 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 - 커뮤니티 게시글, 댓글, 팔로우, 신고와 중고거래 정보는 여러 사용자가 공유하므로 별도의 서비스 서버 영역으로 분리합니다.
 - 개인 착장을 커뮤니티에 게시할 때는 사용자가 공개를 확정한 데이터만 서버로 복사합니다.
 
-개인 데이터와 공개 데이터의 경계, 논리 ERD와 동기화 정책 초안을 작성했습니다. 커뮤니티 서버는 Supabase를 사용하며 영구 계정 인증, `profiles`, 커뮤니티 테이블, 이미지 Storage, 피드 읽기·게시·소셜 상호작용·Realtime 갱신·페이지네이션까지 연결했습니다. 마켓은 스키마·RLS·Storage, 원격 목록 읽기, 매물 쓰기, 관심, Realtime과 상품 단위 1:1 채팅까지 연결했습니다. 신고 접수와 개인별 차단·해제도 연결했으며, 다음 서버 단계는 운영자 검토 도구 또는 OAuth 제공자 운영 설정입니다.
+개인 데이터와 공개 데이터의 경계, 논리 ERD와 동기화 정책 초안을 작성했습니다. 커뮤니티 서버는 Supabase를 사용하며 영구 계정 인증, `profiles`, 커뮤니티 테이블, 이미지 Storage, 피드 읽기·게시·소셜 상호작용·Realtime 갱신·페이지네이션까지 연결했습니다. 마켓은 스키마·RLS·Storage, 원격 목록 읽기, 매물 쓰기, 관심, Realtime과 상품 단위 1:1 채팅까지 연결했습니다. 신고·차단과 사용자의 계정·연결 데이터 직접 삭제도 연결했으며, 다음 서버 단계는 운영자 검토 도구 또는 OAuth 제공자 운영 설정입니다.
 
 상세한 제품 정의와 설계 원칙은 [PRODUCT_CONCEPT.md](./PRODUCT_CONCEPT.md)에서 확인할 수 있습니다.
 발표 순서와 복구 방법은 [DEMO_GUIDE.md](./DEMO_GUIDE.md)에서 확인할 수 있습니다.
 개인 iCloud와 공용 서버의 데이터 경계 및 ERD는 [DATA_ARCHITECTURE.md](./DATA_ARCHITECTURE.md)에서 확인할 수 있습니다.
 신고·차단 범위와 운영 전 보완 사항은 [CONTENT_SAFETY_POLICY.md](./CONTENT_SAFETY_POLICY.md)에서 확인할 수 있습니다.
+계정 탈퇴와 서버·기기 데이터 삭제 범위는 [PRIVACY_DATA_DELETION.md](./PRIVACY_DATA_DELETION.md)에서 확인할 수 있습니다.
 최종 Release 빌드와 검증 결과는 [FINAL_BUILD_REPORT.md](./FINAL_BUILD_REPORT.md)에서 확인할 수 있습니다.
 
 ## 구현 원칙
@@ -261,7 +263,7 @@ scripts/verify_supabase_market.sh
 scripts/verify_supabase_market_storage.sh
 ```
 
-실제 Swift Repository의 커뮤니티 게시·이미지 업로드·소셜 상호작용·피드 재조회·커서 페이지네이션·Realtime 이벤트와 마켓 매물·private 이미지·관심·채팅·신고·차단 왕복은 다음 선택형 통합 테스트로 검증합니다. 생성한 게시물, 매물, 관계, 대화, 신고와 Storage 파일은 테스트 종료 시 삭제됩니다.
+실제 Swift Repository의 커뮤니티 게시·이미지 업로드·소셜 상호작용·피드 재조회·커서 페이지네이션·Realtime 이벤트와 마켓 매물·private 이미지·관심·채팅·신고·차단·계정 탈퇴 왕복은 다음 선택형 통합 테스트로 검증합니다. 생성한 게시물, 매물, 관계, 대화, 신고와 Storage 파일은 테스트 종료 시 삭제되며, 계정 탈퇴 검증은 별도의 일회용 사용자를 생성해 스스로 삭제합니다.
 
 ```bash
 RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
@@ -413,7 +415,7 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
   - [x] 좋아요·댓글·북마크·팔로우 쓰기 연결
   - [x] MY 팔로워·팔로잉 서버 목록 조회와 로컬 fallback
   - [x] Realtime 변경 구독과 커서 기반 페이지네이션
-- [ ] 로컬 마켓 Mock을 Supabase Repository로 단계적 교체
+- [x] 로컬 마켓 Mock을 Supabase Repository로 단계적 교체
   - [x] 매물·사진 메타데이터·관심·선택적 옷장 인증 스키마 구현
   - [x] 판매자 변경 권한과 인증 정보·관심 목록 보호 RLS 검증
   - [x] 직전 가격 자동 기록과 마켓 테이블 Realtime publication 적용
@@ -426,5 +428,7 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
 - [ ] 운영자 신고 검토 도구와 제재·이의 제기 절차 구현
 - [ ] 거래 대화 보존 정책 확정 후 양방향 차단을 서버 RLS로 강제
 - [ ] 중고거래 결제, 배송, 정산 및 분쟁 정책 설계
-- [ ] 개인정보, 얼굴 이미지 및 데이터 삭제 정책 검토
+- [x] 계정 탈퇴와 서버·기기 데이터 삭제 흐름 및 정책 초안
+- [ ] CloudKit 연결 후 개인 iCloud 레코드 삭제·다기기 전파 검증
+- [ ] 얼굴 이미지 공개 동의와 보존·파기 정책 법률 검토
 - [ ] 구독 모델과 AI 비용 구조 검증

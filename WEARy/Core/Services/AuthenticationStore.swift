@@ -297,6 +297,13 @@ final class AuthenticationStore: ObservableObject {
         await clearSession()
     }
 
+    func finishAccountDeletion() async {
+        if let client = SupabaseService.client {
+            try? await client.auth.signOut(scope: .local)
+        }
+        await clearSession()
+    }
+
     private func configuredClient() throws -> SupabaseClient {
         guard let client = SupabaseService.client else {
             throw SupabaseServiceError.missingConfiguration

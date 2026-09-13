@@ -21,6 +21,7 @@
 		3CAC64E8405D40AD9815E64E /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85EDC6B33EF1A9670BF5CBCD /* SupabaseService.swift */; };
 		3E8F63BE86D60E5B057004D1 /* CommunityPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2823FDD51FA71EA66D4B619A /* CommunityPost.swift */; };
 		427F278721697B64C21DD6E2 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = CB6DC0D0BC133AB9F12822EB /* Supabase */; };
+		443A4B94ABAA36E7FF663EE2 /* AccountDeletionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FFF7D199540E2CA4FC1466 /* AccountDeletionRepository.swift */; };
 		44848AC067F5ED6A2D9E78D2 /* MonthOutfitCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EFCC9181CDF1F27AC45F90 /* MonthOutfitCalendarView.swift */; };
 		4678A2CB74D7BB951FCC1581 /* OutfitFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5812FFDF4ED64C5045A858F /* OutfitFlowTests.swift */; };
 		48BD773D10E0D3D8232C11B9 /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBA0D4D242C9ACFF3DD4A1C /* AuthenticationView.swift */; };
@@ -75,6 +76,7 @@
 /* Begin PBXFileReference section */
 		01F4B5A747A653FF2CD15627 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
 		0BBA0D4D242C9ACFF3DD4A1C /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
+		20FFF7D199540E2CA4FC1466 /* AccountDeletionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionRepository.swift; sourceTree = "<group>"; };
 		2128FB884A55142F4E78D46E /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
 		22AD6B04DD18E16C7DF385DB /* WEARyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WEARyApp.swift; sourceTree = "<group>"; };
 		24C239F4DDCA583C5A5F1776 /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
@@ -257,6 +259,7 @@
 		7AE90E7CC3D4CF65DC2A7F7B /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				20FFF7D199540E2CA4FC1466 /* AccountDeletionRepository.swift */,
 				FFA69A7A4BBDBDA7C58281D6 /* AuthenticationStore.swift */,
 				7F2312D75F5627C5342577B5 /* CommunityFeedRepository.swift */,
 				981B2BF802938562BF0F8605 /* CommunityInteractionRepository.swift */,
@@ -508,6 +511,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				443A4B94ABAA36E7FF663EE2 /* AccountDeletionRepository.swift in Sources */,
 				65D8A15FCC1897C3CEDA6733 /* AccountProfileView.swift in Sources */,
 				E4116546E5360610A7D9068B /* AuthenticationStore.swift in Sources */,
 				48BD773D10E0D3D8232C11B9 /* AuthenticationView.swift in Sources */,

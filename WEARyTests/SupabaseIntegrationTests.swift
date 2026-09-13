@@ -706,6 +706,58 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("사용자는 자신의 계정과 연결 데이터를 삭제할 수 있다")
+    func deletesOnlyCallingUserAccount() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        guard SupabaseService.client != nil else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+        let configuration = try supabaseConfiguration()
+        let disposableUser = try await createAnonymousSession(configuration: configuration)
+        let currentUserID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let postID = UUID()
+
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/posts",
+            configuration: configuration,
+            token: disposableUser.token,
+            body: [
+                "id": postID.uuidString,
+                "author_id": disposableUser.userID.uuidString,
+                "caption": "Account deletion integration",
+                "visibility": "public",
+            ]
+        )
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/delete_current_user",
+            configuration: configuration,
+            token: disposableUser.token,
+            body: [:]
+        )
+
+        let deletedProfileData = try await restRequest(
+            method: "GET",
+            path: "/rest/v1/profiles?id=eq.\(disposableUser.userID.uuidString)&select=id",
+            configuration: configuration,
+            token: disposableUser.token
+        )
+        let deletedProfiles = try JSONSerialization.jsonObject(with: deletedProfileData) as? [[String: Any]]
+        #expect(deletedProfiles?.isEmpty == true)
+
+        let deletedPostData = try await restRequest(
+            method: "GET",
+            path: "/rest/v1/posts?id=eq.\(postID.uuidString)&select=id",
+            configuration: configuration,
+            token: disposableUser.token
+        )
+        let deletedPosts = try JSONSerialization.jsonObject(with: deletedPostData) as? [[String: Any]]
+        #expect(deletedPosts?.isEmpty == true)
+        #expect(try await SupabaseSessionManager.shared.authenticatedUserID() == currentUserID)
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration

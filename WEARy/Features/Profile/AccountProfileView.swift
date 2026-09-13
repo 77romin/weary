@@ -5,6 +5,7 @@ struct AccountProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var authentication: AuthenticationStore
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @Query private var communityPosts: [CommunityPost]
     @Query private var marketListings: [MarketListing]
     @State private var handle = ""
@@ -21,6 +22,7 @@ struct AccountProfileView: View {
     @State private var isWorking = false
     @State private var message: String?
     @State private var loadedProfileID: UUID?
+    @State private var showingAccountDeletion = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +34,11 @@ struct AccountProfileView: View {
                 Section {
                     Button("로그아웃", role: .destructive) { logout() }
                         .frame(maxWidth: .infinity)
+                    Button("계정 탈퇴", role: .destructive) {
+                        showingAccountDeletion = true
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("profile.deleteAccount")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -50,6 +57,13 @@ struct AccountProfileView: View {
                 }
             }
             .task { await load() }
+            .sheet(isPresented: $showingAccountDeletion) {
+                AccountDeletionConfirmationView {
+                    try clearLocalData()
+                    hasCompletedOnboarding = false
+                }
+                .environmentObject(authentication)
+            }
             .alert("내 정보", isPresented: Binding(
                 get: { message != nil },
                 set: { if !$0 { message = nil } }
@@ -59,6 +73,15 @@ struct AccountProfileView: View {
                 Text(message ?? "")
             }
         }
+    }
+
+    private func clearLocalData() throws {
+        try modelContext.delete(model: CommunityPost.self)
+        try modelContext.delete(model: MarketListing.self)
+        try modelContext.delete(model: OutfitItem.self)
+        try modelContext.delete(model: Outfit.self)
+        try modelContext.delete(model: Garment.self)
+        try modelContext.save()
     }
 
     private var identitySection: some View {
@@ -233,5 +256,81 @@ struct AccountProfileView: View {
     private func text(_ value: Double?) -> String {
         guard let value else { return "" }
         return value.formatted(.number.precision(.fractionLength(0...1)))
+    }
+}
+
+private struct AccountDeletionConfirmationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authentication: AuthenticationStore
+    let clearLocalData: () throws -> Void
+    @State private var confirmation = ""
+    @State private var isDeleting = false
+    @State private var deletionError: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Label("이 작업은 되돌릴 수 없습니다.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.red)
+                    Text("공개 게시물, 매물, 채팅, 프로필과 서버 사진을 삭제하고 이 기기의 옷장·착장 기록도 비웁니다.")
+                    Text("탈퇴를 계속하려면 아래에 ‘탈퇴’를 입력해 주세요.")
+                        .font(.subheadline.weight(.semibold))
+                }
+                Section("확인 문구") {
+                    TextField("탈퇴", text: $confirmation)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .disabled(isDeleting)
+                }
+                Section {
+                    Button("계정과 데이터 영구 삭제", role: .destructive) {
+                        Task { await deleteAccount() }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .disabled(confirmation != "탈퇴" || isDeleting)
+                    .accessibilityIdentifier("profile.confirmAccountDeletion")
+                    if isDeleting {
+                        HStack {
+                            Spacer()
+                            ProgressView("데이터 삭제 중…")
+                            Spacer()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("계정 탈퇴")
+            .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled(isDeleting)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }.disabled(isDeleting)
+                }
+            }
+            .alert("계정을 삭제하지 못했어요", isPresented: Binding(
+                get: { deletionError != nil },
+                set: { if !$0 { deletionError = nil } }
+            )) {
+                Button("확인", role: .cancel) { }
+            } message: {
+                Text(deletionError ?? "네트워크 상태를 확인한 뒤 다시 시도해 주세요.")
+            }
+        }
+    }
+
+    @MainActor
+    private func deleteAccount() async {
+        guard confirmation == "탈퇴", !isDeleting else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            _ = try await SupabaseAccountDeletionRepository.shared.deleteCurrentAccount()
+            try clearLocalData()
+            await authentication.finishAccountDeletion()
+            dismiss()
+        } catch {
+            deletionError = error.localizedDescription
+        }
     }
 }
