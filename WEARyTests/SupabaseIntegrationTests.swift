@@ -758,6 +758,62 @@ struct SupabaseIntegrationTests {
         #expect(try await SupabaseSessionManager.shared.authenticatedUserID() == currentUserID)
     }
 
+    @Test("일반 사용자는 운영자 신고 도구에 접근할 수 없다")
+    func rejectsModerationAccessForRegularUser() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        let configuration = try supabaseConfiguration()
+        let regularUser = try await createAnonymousSession(configuration: configuration)
+
+        let accessData = try await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/is_content_moderator",
+            configuration: configuration,
+            token: regularUser.token,
+            body: [:]
+        )
+        #expect(try JSONDecoder().decode(Bool.self, from: accessData) == false)
+
+        var listWasDenied = false
+        do {
+            _ = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/rpc/fetch_moderation_reports",
+                configuration: configuration,
+                token: regularUser.token,
+                body: ["p_limit": 10]
+            )
+        } catch {
+            listWasDenied = true
+        }
+        #expect(listWasDenied)
+
+        var reviewWasDenied = false
+        do {
+            _ = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/rpc/review_content_report",
+                configuration: configuration,
+                token: regularUser.token,
+                body: [
+                    "p_report_id": UUID().uuidString,
+                    "p_status": "reviewing",
+                    "p_note": "",
+                ]
+            )
+        } catch {
+            reviewWasDenied = true
+        }
+        #expect(reviewWasDenied)
+
+        _ = try? await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/delete_current_user",
+            configuration: configuration,
+            token: regularUser.token,
+            body: [:]
+        )
+    }
+
     private func receivesFirstEvent(
         from events: AsyncStream<Void>,
         timeout: Duration

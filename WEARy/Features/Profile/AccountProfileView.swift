@@ -23,6 +23,7 @@ struct AccountProfileView: View {
     @State private var message: String?
     @State private var loadedProfileID: UUID?
     @State private var showingAccountDeletion = false
+    @State private var isModerator = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,16 @@ struct AccountProfileView: View {
                 bodySection
                 optionalMeasurementsSection
                 passwordSection
+                if isModerator {
+                    Section("운영") {
+                        NavigationLink {
+                            ModerationReportsView()
+                        } label: {
+                            Label("신고 검토", systemImage: "checkmark.shield")
+                        }
+                        .accessibilityIdentifier("profile.moderationReports")
+                    }
+                }
                 Section {
                     Button("로그아웃", role: .destructive) { logout() }
                         .frame(maxWidth: .infinity)
@@ -168,6 +179,7 @@ struct AccountProfileView: View {
     @MainActor
     private func load() async {
         do {
+            isModerator = (try? await SupabaseModerationRepository.shared.isCurrentUserModerator()) ?? false
             if authentication.profile == nil { try await authentication.refreshProfile() }
             guard let profile = authentication.profile, loadedProfileID != profile.id else { return }
             loadedProfileID = profile.id
