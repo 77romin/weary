@@ -237,7 +237,8 @@ final class AuthenticationStore: ObservableObject {
                     "handle": .string(normalizedHandle),
                     "display_name": .string(normalizedNickname),
                     "avatar_initials": .string(Self.initials(for: normalizedNickname)),
-                ]
+                ],
+                redirectTo: SupabaseService.authRedirectURL
             )
             if let session = response.session {
                 await activate(session)
@@ -272,6 +273,15 @@ final class AuthenticationStore: ObservableObject {
         try await client.auth.resetPasswordForEmail(
             email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             redirectTo: SupabaseService.authRedirectURL
+        )
+    }
+
+    func resendSignUpConfirmation(to email: String) async throws {
+        let client = try configuredClient()
+        try await client.auth.resend(
+            email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            type: .signup,
+            emailRedirectTo: SupabaseService.authRedirectURL
         )
     }
 

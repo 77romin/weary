@@ -7,6 +7,7 @@ struct AuthenticationView: View {
     @State private var password = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var confirmationMessage: String?
     @State private var showingSignUp = false
     @State private var showingRecovery = false
 
@@ -18,6 +19,7 @@ struct AuthenticationView: View {
                     brand
                     credentials
                     recoveryButton
+                    confirmationResendButton
                     socialLogins
                     signUpButton
                 }
@@ -47,6 +49,14 @@ struct AuthenticationView: View {
                 Button("확인", role: .cancel) {}
             } message: {
                 Text(errorMessage ?? "입력 정보를 확인해 주세요.")
+            }
+            .alert("이메일 인증", isPresented: Binding(
+                get: { confirmationMessage != nil },
+                set: { if !$0 { confirmationMessage = nil } }
+            )) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text(confirmationMessage ?? "")
             }
         }
         .accessibilityIdentifier("auth.login")
@@ -84,7 +94,10 @@ struct AuthenticationView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
+                    .contentShape(Rectangle())
             }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
             .buttonStyle(.plain)
             .foregroundStyle(WEARyTheme.ink)
             .background(WEARyTheme.lime, in: RoundedRectangle(cornerRadius: 16))
@@ -100,6 +113,16 @@ struct AuthenticationView: View {
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(WEARyTheme.secondaryInk)
+    }
+
+    private var confirmationResendButton: some View {
+        Button("가입 확인 메일 다시 보내기") {
+            resendConfirmation()
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(WEARyTheme.secondaryInk)
+        .disabled(!email.contains("@") || isWorking)
+        .opacity(email.contains("@") ? 1 : 0.45)
     }
 
     private var socialLogins: some View {
@@ -177,6 +200,20 @@ struct AuthenticationView: View {
                 try await authentication.signInWithOAuth(provider)
             } catch {
                 errorMessage = friendlyMessage(for: error)
+            }
+            isWorking = false
+        }
+    }
+
+    private func resendConfirmation() {
+        guard email.contains("@"), !isWorking else { return }
+        isWorking = true
+        Task { @MainActor in
+            do {
+                try await authentication.resendSignUpConfirmation(to: email)
+                confirmationMessage = "가입 확인 메일을 다시 보냈어요. 스팸 메일함도 확인해 주세요."
+            } catch {
+                confirmationMessage = friendlyMessage(for: error)
             }
             isWorking = false
         }
@@ -422,6 +459,13 @@ enum AccountInputValidator {
 private func friendlyMessage(for error: Error) -> String {
     let raw = error.localizedDescription
     let lowercased = raw.lowercased()
+    if lowercased.contains("email not confirmed") {
+        return "이메일 인증이 아직 완료되지 않았어요. 가입 확인 메일의 링크를 누른 뒤 다시 로그인해 주세요."
+    }
+    if lowercased.contains("email address not authorized") ||
+        lowercased.contains("email rate limit exceeded") {
+        return "현재 개발용 메일 발송이 제한되어 있어요. 잠시 후 다시 시도하거나 관리자에게 이메일 인증 설정을 확인해 달라고 요청해 주세요."
+    }
     if lowercased.contains("invalid login credentials") { return "이메일 또는 비밀번호가 맞지 않아요." }
     if lowercased.contains("already registered") || lowercased.contains("already been registered") {
         return "이미 가입된 이메일이에요. 로그인하거나 비밀번호를 재설정해 주세요."
