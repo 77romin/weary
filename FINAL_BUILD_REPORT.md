@@ -6,6 +6,7 @@
 | --- | --- |
 | 빌드 일시 | 2026-09-14 |
 | 기준 | 2026-09-14 인증 복구·소셜 데이터 모드 작업 트리 |
+| 최신 테스트 갱신 | 2026-09-15 CloudKit 준비·온디바이스 Vision PoC |
 | 구성 | Release |
 | 플랫폼 | iOS 18.0 이상 |
 | 앱 버전 | 0.1.0 (1) |
@@ -19,7 +20,7 @@
 
 ## 검증 결과
 
-- iOS 단위 테스트 42개 전체 통과
+- iOS 단위 테스트 44개 전체 통과
 - 시뮬레이터 UI 테스트 12개 검증 완료
 - 실제 Supabase 왕복 통합 테스트 15개 전체 통과
 - 독립 사용자 A/B 세션에서 게시물 노출, 팔로우·댓글, 매물 노출과 양방향 채팅 확인
@@ -51,7 +52,7 @@ xcodebuild -quiet \
 
 이 빌드는 로컬 우선 개인 옷장과 Supabase 공용 서비스를 결합한 네트워크 연결 프로토타입이다.
 
-- 착장 의류 추천은 실제 이미지 AI가 아닌 `DemoOutfitAnalyzer` Mock이다.
+- 착장 의류 추천은 Apple Vision의 이미지 특징값으로 카테고리별 신체 영역과 옷장 사진을 기기 안에서 비교하며, 분석을 사용할 수 없으면 `DemoOutfitAnalyzer`로 fallback한다. 실제 의류 영역 탐지·세분화 모델은 아직 포함하지 않았다.
 - 개인 옷장·착장은 SwiftData `default.store`, 피드·마켓 캐시는 재생성 가능한 `service-cache.store`로 분리했다. 일반 Debug는 로컬 전용이며, 실제 CloudKit 동기화는 유료 개발자 팀의 컨테이너 등록 후 `CloudKitDebug`에서 검증해야 한다.
 - 이메일 계정, 프로필, 피드 게시·소셜 상호작용·Realtime·페이지네이션은 Supabase에 연결되어 있다.
 - 마켓 매물·이미지·관심·상태 변경·상품별 1:1 채팅은 Supabase에 연결되어 있다.
@@ -68,4 +69,4 @@ xcodebuild -quiet \
 3. 운영 계정으로 제재 생성·이의 제기 심사 성공 경로 최종 확인
 4. CloudKit private database와 SwiftData 동기화 검증
 5. Google·Kakao·Apple 운영 키 발급과 OAuth Provider 활성화
-6. 실제 AI 의류 탐지·이미지 유사도 분석 PoC
+6. Vision PoC를 실제 착장 데이터셋으로 측정하고 의류 영역 탐지·세분화 모델 검증

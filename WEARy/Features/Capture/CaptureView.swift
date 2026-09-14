@@ -28,7 +28,7 @@ struct CaptureView: View {
     @State private var postCaption = "오늘의 WEARy"
     @State private var publishFailureMessage: String?
 
-    private let analyzer: any OutfitAnalyzing = DemoOutfitAnalyzer()
+    private let analyzer: any OutfitAnalyzing = DeviceOutfitAnalyzer()
 
     var body: some View {
         NavigationStack {
@@ -208,6 +208,9 @@ struct CaptureView: View {
                 Text("색상과 형태가 비슷한 옷을 비교하는 중")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.6))
                     .lightTextOutline()
+                Text("사진은 기기 밖으로 전송되지 않아요")
+                    .font(.caption).foregroundStyle(.white.opacity(0.48))
+                    .lightTextOutline()
             }
         }
         .foregroundStyle(.white)
@@ -221,10 +224,10 @@ struct CaptureView: View {
                         .frame(width: 92, height: 132)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("AI가 \(groups.count)개 아이템을 찾았어요")
+                        Text(reviewTitle)
                             .font(.headline)
                             .lightTextOutline()
-                        Text("틀린 옷만 바꾸고 기록을 확정하세요.")
+                        Text(reviewSubtitle)
                             .font(.subheadline).foregroundStyle(.white.opacity(0.58))
                             .lightTextOutline()
                     }
@@ -356,7 +359,16 @@ struct CaptureView: View {
         phase = .analyzing
         do {
             groups = try await analyzer.analyze(
-                wardrobe: garments.map { GarmentSnapshot(id: $0.id, category: $0.category, name: $0.name) }
+                photoData: photoData,
+                wardrobe: garments.map {
+                    GarmentSnapshot(
+                        id: $0.id,
+                        category: $0.category,
+                        name: $0.name,
+                        imageData: $0.imageData,
+                        cutoutImageData: $0.cutoutImageData
+                    )
+                }
             )
             phase = .review
         } catch {
@@ -371,6 +383,18 @@ struct CaptureView: View {
 
     private func candidateGarments(for group: DetectedGarmentGroup) -> [Garment] {
         group.candidateIDs.compactMap(garment(with:))
+    }
+
+    private var reviewTitle: String {
+        groups.contains { $0.source == .ai }
+            ? "옷장에서 기본 후보를 골랐어요"
+            : "AI가 \(groups.count)개 카테고리 후보를 찾았어요"
+    }
+
+    private var reviewSubtitle: String {
+        groups.contains { $0.source == .ai }
+            ? "이미지 비교를 사용할 수 없어 직접 확인이 필요해요."
+            : "비슷한 옷을 확인하고 기록을 확정하세요."
     }
 
     private func select(_ garment: Garment?, in groupID: UUID) {

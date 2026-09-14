@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import SwiftData
 import Testing
+import UIKit
 @testable import WEARy
 
 @Suite("착장 기록 핵심 규칙")
@@ -48,17 +49,68 @@ struct OutfitFlowTests {
             GarmentSnapshot(id: bottomID, category: .bottom, name: "데님"),
         ]
 
-        let result = try await DemoOutfitAnalyzer().analyze(wardrobe: wardrobe)
+        let result = try await DemoOutfitAnalyzer().analyze(photoData: nil, wardrobe: wardrobe)
 
         #expect(result.map(\.category) == [.top, .bottom])
         #expect(result.map(\.selectedGarmentID) == [topID, bottomID])
+    }
+
+    @Test("기기 분석기는 Vision 또는 안전한 fallback으로 후보를 반환한다")
+    @MainActor
+    func deviceAnalyzerUsesVisionFeaturePrints() async throws {
+        let garmentID = UUID()
+        let imageData = try #require(solidImageData(red: 0.18, green: 0.42, blue: 0.76))
+        let wardrobe = [GarmentSnapshot(
+            id: garmentID,
+            category: .bag,
+            name: "Vision 테스트 가방",
+            imageData: imageData,
+            cutoutImageData: imageData
+        )]
+
+        let result = try await DeviceOutfitAnalyzer().analyze(
+            photoData: imageData,
+            wardrobe: wardrobe
+        )
+        let group = try #require(result.first)
+
+#if targetEnvironment(simulator)
+        #expect(group.source == .vision || group.source == .ai)
+#else
+        #expect(group.source == .vision)
+#endif
+        #expect(group.candidateIDs == [garmentID])
+        if group.source == .vision && group.confidence == .none {
+            #expect(group.selectedGarmentID == nil)
+        } else {
+            #expect(group.selectedGarmentID == garmentID)
+        }
+    }
+
+    @Test("Vision 후보는 특징 거리가 가까운 순서로 최대 세 개를 고른다")
+    func deviceAnalyzerRanksNearestCandidates() {
+        let first = UUID()
+        let second = UUID()
+        let third = UUID()
+        let fallback = UUID()
+
+        let result = DeviceOutfitAnalyzer.rankedCandidateIDs(
+            distances: [
+                (id: second, distance: 4.2),
+                (id: third, distance: 8.7),
+                (id: first, distance: 1.1),
+            ],
+            fallbackIDs: [fallback]
+        )
+
+        #expect(result == [first, second, third])
     }
 
     @Test("빈 옷장은 분석 실패 이유를 제공한다")
     @MainActor
     func analyzerReportsEmptyWardrobe() async {
         do {
-            _ = try await DemoOutfitAnalyzer().analyze(wardrobe: [])
+            _ = try await DemoOutfitAnalyzer().analyze(photoData: nil, wardrobe: [])
             Issue.record("빈 옷장 분석은 실패해야 합니다")
         } catch {
             #expect(error.localizedDescription.contains("옷장"))
@@ -693,4 +745,15 @@ struct OutfitFlowTests {
             }
         }
     }
+}
+
+private func solidImageData(red: CGFloat, green: CGFloat, blue: CGFloat) -> Data? {
+    let size = CGSize(width: 480, height: 640)
+    let renderer = UIGraphicsImageRenderer(size: size)
+    return renderer.image { context in
+        UIColor(red: red, green: green, blue: blue, alpha: 1).setFill()
+        context.fill(CGRect(origin: .zero, size: size))
+        UIColor.white.setFill()
+        context.fill(CGRect(x: 110, y: 150, width: 260, height: 340))
+    }.pngData()
 }

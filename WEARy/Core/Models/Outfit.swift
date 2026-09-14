@@ -3,6 +3,7 @@ import SwiftData
 
 enum MatchSource: String, Codable {
     case ai
+    case vision
     case manual
 }
 
