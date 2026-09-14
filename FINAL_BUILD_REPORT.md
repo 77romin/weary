@@ -21,7 +21,8 @@
 
 - iOS 단위 테스트 38개 전체 통과
 - 시뮬레이터 UI 테스트 11개 검증 완료
-- 실제 Supabase 왕복 통합 테스트 13개 전체 통과
+- 실제 Supabase 왕복 통합 테스트 14개 전체 통과
+- 독립 사용자 A/B 세션에서 게시물 노출, 팔로우·댓글, 매물 노출과 양방향 채팅 확인
 - 로컬·원격 Supabase 마이그레이션 17개 일치
 - Supabase DB 린트 오류 0건
 - Xcode 정적 분석 통과
@@ -61,7 +62,7 @@ xcodebuild -quiet \
 ## 다음 단계
 
 1. 이메일 인증을 완료한 최초 운영 계정에 안전하게 `admin` 역할 부여
-2. 서로 다른 실제 계정 2개를 이용한 다중 사용자 수동 시나리오 확인
+2. 친구 기기 2대에서 이메일 계정으로 최종 사용성 스모크 테스트
 3. 계정 제재·이의 제기·복구 절차 구현
 4. CloudKit private database와 SwiftData 동기화 검증
 5. Google·Kakao·Apple 운영 키 발급과 OAuth Provider 활성화

@@ -628,6 +628,137 @@ struct SupabaseIntegrationTests {
         if let capturedError { throw capturedError }
     }
 
+    @Test("두 사용자가 피드부터 마켓 채팅까지 하나의 실제 흐름을 공유한다")
+    func completesTwoUserCommunityAndMarketJourney() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        guard let client = SupabaseService.client else {
+            Issue.record("Supabase 로컬 설정이 필요합니다")
+            return
+        }
+
+        let configuration = try supabaseConfiguration()
+        let seller = try await createAnonymousSession(configuration: configuration)
+        let buyerID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        let postID = UUID()
+        let listingID = UUID()
+        let marker = UUID().uuidString
+        let commentBody = "친구 B 댓글 \(marker)"
+        let buyerMessage = "친구 B 구매 문의 \(marker)"
+        let sellerReply = "친구 A 답장 \(marker)"
+
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/posts",
+            configuration: configuration,
+            token: seller.token,
+            body: [
+                "id": postID.uuidString,
+                "author_id": seller.userID.uuidString,
+                "caption": "친구 A 스타일 \(marker)",
+                "visibility": "public",
+            ]
+        )
+        try await restRequest(
+            method: "POST",
+            path: "/rest/v1/market_listings",
+            configuration: configuration,
+            token: seller.token,
+            body: [
+                "id": listingID.uuidString,
+                "seller_id": seller.userID.uuidString,
+                "title": "친구 A 매물 \(marker)",
+                "description": "2인 전체 흐름 검증",
+                "price": 25_000,
+                "brand_snapshot": "WEARy",
+                "category_snapshot": GarmentCategory.outer.rawValue,
+                "size_snapshot": "M",
+                "color_hex_snapshot": "667788",
+                "condition": "excellent",
+                "status": "active",
+            ]
+        )
+
+        let interactions = SupabaseCommunityInteractionRepository.shared
+        let chat = SupabaseMarketChatRepository.shared
+        var capturedError: Error?
+        do {
+            let buyerFeed = try await SupabaseCommunityFeedRepository.shared.fetchFeed(limit: 100)
+            #expect(buyerFeed.contains { $0.id == postID && $0.authorID == seller.userID })
+            let buyerMarket = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 100)
+            #expect(buyerMarket.contains { $0.id == listingID && $0.sellerID == seller.userID })
+
+            try await interactions.setLike(postID: postID, isLiked: true)
+            try await interactions.addComment(postID: postID, body: commentBody)
+            try await interactions.setFollowing(authorID: seller.userID, isFollowing: true)
+
+            let sellerComments = try await restRequest(
+                method: "GET",
+                path: "/rest/v1/comments?post_id=eq.\(postID.uuidString)&author_id=eq.\(buyerID.uuidString)&select=body",
+                configuration: configuration,
+                token: seller.token
+            )
+            let commentRows = try JSONSerialization.jsonObject(with: sellerComments) as? [[String: Any]]
+            #expect(commentRows?.contains { $0["body"] as? String == commentBody } == true)
+
+            let sellerFollowers = try await restRequest(
+                method: "GET",
+                path: "/rest/v1/follows?following_id=eq.\(seller.userID.uuidString)&follower_id=eq.\(buyerID.uuidString)&select=follower_id",
+                configuration: configuration,
+                token: seller.token
+            )
+            let followerRows = try JSONSerialization.jsonObject(with: sellerFollowers) as? [[String: Any]]
+            #expect(followerRows?.count == 1)
+
+            let conversationID = try await chat.getOrCreateBuyerConversation(listingID: listingID)
+            try await chat.sendMessage(conversationID: conversationID, body: buyerMessage)
+
+            let sellerMessages = try await restRequest(
+                method: "GET",
+                path: "/rest/v1/market_messages?conversation_id=eq.\(conversationID.uuidString)&select=body,sender_id&order=created_at.asc",
+                configuration: configuration,
+                token: seller.token
+            )
+            let messageRows = try JSONSerialization.jsonObject(with: sellerMessages) as? [[String: Any]]
+            #expect(messageRows?.contains { $0["body"] as? String == buyerMessage } == true)
+
+            try await restRequest(
+                method: "POST",
+                path: "/rest/v1/market_messages",
+                configuration: configuration,
+                token: seller.token,
+                body: [
+                    "conversation_id": conversationID.uuidString,
+                    "sender_id": seller.userID.uuidString,
+                    "body": sellerReply,
+                ]
+            )
+            let buyerMessages = try await chat.fetchMessages(conversationID: conversationID)
+            #expect(buyerMessages.contains { $0.senderID == seller.userID && $0.body == sellerReply })
+        } catch {
+            capturedError = error
+        }
+
+        _ = try? await interactions.setLike(postID: postID, isLiked: false)
+        _ = try? await interactions.setFollowing(authorID: seller.userID, isFollowing: false)
+        _ = try? await client.from("comments").delete()
+            .eq("post_id", value: postID.uuidString)
+            .eq("author_id", value: buyerID.uuidString).execute()
+        _ = try? await restRequest(
+            method: "DELETE",
+            path: "/rest/v1/posts?id=eq.\(postID.uuidString)",
+            configuration: configuration,
+            token: seller.token
+        )
+        _ = try? await restRequest(
+            method: "DELETE",
+            path: "/rest/v1/market_listings?id=eq.\(listingID.uuidString)",
+            configuration: configuration,
+            token: seller.token
+        )
+
+        if let capturedError { throw capturedError }
+    }
+
     @Test("신고와 차단은 사용자별로 보호되고 콘텐츠를 숨긴다")
     func reportsAndBlocksRemoteContent() async throws {
         guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }

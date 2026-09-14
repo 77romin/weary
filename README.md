@@ -275,7 +275,7 @@ scripts/verify_supabase_market.sh
 scripts/verify_supabase_market_storage.sh
 ```
 
-실제 Swift Repository의 커뮤니티 게시·이미지 업로드·소셜 상호작용·피드 재조회·커서 페이지네이션·Realtime 이벤트와 마켓 매물·private 이미지·관심·채팅·신고·차단·계정 탈퇴 왕복은 다음 선택형 통합 테스트로 검증합니다. 생성한 게시물, 매물, 관계, 대화, 신고와 Storage 파일은 테스트 종료 시 삭제되며, 계정 탈퇴 검증은 별도의 일회용 사용자를 생성해 스스로 삭제합니다.
+실제 Swift Repository의 커뮤니티 게시·이미지 업로드·소셜 상호작용·피드 재조회·커서 페이지네이션·Realtime 이벤트와 마켓 매물·private 이미지·관심·채팅·신고·차단·계정 탈퇴 왕복은 다음 선택형 통합 테스트로 검증합니다. 독립된 사용자 A/B 세션으로 게시물·팔로우·댓글·매물·양방향 채팅까지 이어지는 전체 공유 시나리오도 포함합니다. 생성한 게시물, 매물, 관계, 대화, 신고와 Storage 파일은 테스트 종료 시 삭제되며, 계정 탈퇴 검증은 별도의 일회용 사용자를 생성해 스스로 삭제합니다.
 
 ```bash
 RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
@@ -384,7 +384,8 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
 - [x] 로컬·원격 마이그레이션 17개 일치 확인
 - [x] Supabase DB 린트 오류 0건 확인
 - [x] iOS 단위 테스트 전체 통과
-- [x] Supabase 실제 서버 통합 테스트 13개 통과
+- [x] Supabase 실제 서버 통합 테스트 14개 통과
+- [x] 독립 사용자 A/B의 피드 게시·팔로우·댓글·매물·양방향 채팅 전체 시나리오 검증
 - [x] 시뮬레이터 UI 테스트 3개 통과
 - [x] 최신 Release 정적 분석·실기기 빌드·설치·실행 확인
 - [x] 피드·마켓 실서버/데모 모드 분리와 서버 빈 상태 구현
