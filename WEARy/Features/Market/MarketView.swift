@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MarketView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var authentication: AuthenticationStore
     @Query(sort: \MarketListing.createdAt, order: .reverse) private var listings: [MarketListing]
     @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @State private var showingSellFlow = false
@@ -60,7 +61,9 @@ struct MarketView: View {
             .navigationTitle("마켓")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("판매") { showingSellFlow = true }.fontWeight(.bold)
+                    Button("판매") { showingSellFlow = true }
+                        .fontWeight(.bold)
+                        .disabled(authentication.isSocialWriteRestricted)
                 }
             }
             .navigationDestination(for: MarketListing.self) { listing in

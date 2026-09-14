@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FeedView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var authentication: AuthenticationStore
     @Query(sort: \CommunityPost.createdAt, order: .reverse) private var posts: [CommunityPost]
     @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @State private var selectedTopic = "전체"
@@ -112,6 +113,7 @@ struct FeedView: View {
                             Image(systemName: "plus")
                         }
                         .accessibilityLabel("피드 게시물 작성")
+                        .disabled(authentication.isSocialWriteRestricted)
                         .accessibilityIdentifier("feed.compose")
                         Image(systemName: "bell")
                     }

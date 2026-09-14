@@ -996,6 +996,15 @@ struct SupabaseIntegrationTests {
         let visibleRows = try JSONSerialization.jsonObject(with: visibleData) as? [[String: Any]]
         #expect(visibleRows?.isEmpty == true)
 
+        let writeAccessData = try await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/can_current_user_write_shared_content",
+            configuration: configuration,
+            token: regularUser.token,
+            body: [:]
+        )
+        #expect(try JSONDecoder().decode(Bool.self, from: writeAccessData))
+
         var directInsertDenied = false
         do {
             _ = try await restRequest(

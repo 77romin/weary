@@ -87,6 +87,21 @@ struct ProfileView: View {
                         .padding(16)
                         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 18))
 
+                        if let sanction = authentication.activeAccountSanction {
+                            Label {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("계정 \(sanction.kind.title) 적용 중").fontWeight(.bold)
+                                    Text("커뮤니티·마켓 작성 기능이 제한됩니다. 내 정보에서 상세 내용과 이의 제기를 확인해 주세요.")
+                                        .font(.caption)
+                                }
+                            } icon: {
+                                Image(systemName: "exclamationmark.shield.fill")
+                            }
+                            .foregroundStyle(WEARyTheme.ink)
+                            .padding(16)
+                            .background(WEARyTheme.coral.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
+                        }
+
                         Button {
                             showingBlockedUsers = true
                         } label: {

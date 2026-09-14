@@ -203,6 +203,7 @@ final class AuthenticationStore: ObservableObject {
     @Published private(set) var isPasswordAccount = false
     @Published var requiresPasswordUpdate = false
     @Published var accountNotice: String?
+    @Published private(set) var activeAccountSanction: AccountSanctionSnapshot?
 
     private var observerTask: Task<Void, Never>?
     private let pendingConfirmationKey = "auth.pendingEmailConfirmation"
@@ -211,6 +212,7 @@ final class AuthenticationStore: ObservableObject {
 
     var displayName: String { profile?.displayName ?? "나의 WEARy" }
     var handle: String? { profile?.handle }
+    var isSocialWriteRestricted: Bool { activeAccountSanction != nil }
 
     deinit {
         observerTask?.cancel()
@@ -465,6 +467,13 @@ final class AuthenticationStore: ObservableObject {
         isPasswordAccount = session.user.identities?.contains { $0.provider == "email" } == true
         await SupabaseSessionManager.shared.update(userID: session.user.id)
         profile = try? await AccountProfileRepository.shared.fetch(userID: session.user.id)
+        if let result = try? await SupabaseAccountSanctionRepository.shared.fetchMine() {
+            activeAccountSanction = result.0.first {
+                $0.isActive && $0.kind != .warning
+            }
+        } else {
+            activeAccountSanction = nil
+        }
         phase = .signedIn
     }
 
@@ -473,6 +482,7 @@ final class AuthenticationStore: ObservableObject {
         profile = nil
         isPasswordAccount = false
         requiresPasswordUpdate = false
+        activeAccountSanction = nil
         await SupabaseSessionManager.shared.update(userID: nil)
         phase = .signedOut
     }
