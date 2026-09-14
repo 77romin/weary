@@ -1043,6 +1043,32 @@ struct SupabaseIntegrationTests {
         } catch { foreignAppealDenied = true }
         #expect(foreignAppealDenied)
 
+        for request in [
+            ("/rest/v1/rpc/fetch_moderation_appeals", ["p_limit": 10] as [String: Any]),
+            ("/rest/v1/rpc/action_user_report", [
+                "p_report_id": UUID().uuidString,
+                "p_kind": "warning",
+                "p_reason": "권한 없는 제재",
+            ] as [String: Any]),
+            ("/rest/v1/rpc/review_account_sanction_appeal", [
+                "p_appeal_id": UUID().uuidString,
+                "p_status": "accepted",
+                "p_note": "권한 없는 심사",
+            ] as [String: Any]),
+        ] {
+            var staffOperationDenied = false
+            do {
+                _ = try await restRequest(
+                    method: "POST",
+                    path: request.0,
+                    configuration: configuration,
+                    token: regularUser.token,
+                    body: request.1
+                )
+            } catch { staffOperationDenied = true }
+            #expect(staffOperationDenied)
+        }
+
         _ = try? await restRequest(
             method: "POST",
             path: "/rest/v1/rpc/delete_current_user",

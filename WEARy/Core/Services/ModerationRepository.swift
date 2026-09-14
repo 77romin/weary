@@ -144,10 +144,12 @@ enum ModerationError: LocalizedError {
     }
 }
 
-enum AccountSanctionKind: String, Decodable, Sendable {
+enum AccountSanctionKind: String, CaseIterable, Identifiable, Codable, Sendable {
     case warning
     case restriction
     case suspension
+
+    var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -196,6 +198,34 @@ struct AccountSanctionAppealSnapshot: Identifiable, Decodable, Sendable {
     }
 }
 
+struct ModerationAppealSnapshot: Identifiable, Decodable, Sendable {
+    let id: UUID
+    let sanctionID: UUID
+    let userID: UUID
+    let userName: String
+    let userHandle: String
+    let sanctionKind: AccountSanctionKind
+    let sanctionReason: String
+    let appealBody: String
+    let status: String
+    let moderatorNote: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case sanctionID = "sanction_id"
+        case userID = "user_id"
+        case userName = "user_name"
+        case userHandle = "user_handle"
+        case sanctionKind = "sanction_kind"
+        case sanctionReason = "sanction_reason"
+        case appealBody = "appeal_body"
+        case status = "appeal_status"
+        case moderatorNote = "moderator_note"
+        case createdAt = "created_at"
+    }
+}
+
 actor SupabaseAccountSanctionRepository {
     static let shared = SupabaseAccountSanctionRepository()
 
@@ -220,6 +250,63 @@ actor SupabaseAccountSanctionRepository {
             "p_sanction_id": sanctionID.uuidString,
             "p_body": body.trimmingCharacters(in: .whitespacesAndNewlines),
         ]).execute()
+    }
+
+    func fetchModerationAppeals(status: String? = nil) async throws -> [ModerationAppealSnapshot] {
+        guard let client = SupabaseService.client else { throw SupabaseServiceError.missingConfiguration }
+        return try await client.rpc(
+            "fetch_moderation_appeals",
+            params: ModerationAppealFetchParameters(status: status, limit: 100)
+        ).execute().value
+    }
+
+    func actionUserReport(
+        reportID: UUID,
+        kind: AccountSanctionKind,
+        reason: String,
+        endsAt: Date?,
+        note: String
+    ) async throws {
+        guard let client = SupabaseService.client else { throw SupabaseServiceError.missingConfiguration }
+        try await client.rpc("action_user_report", params: AccountSanctionActionParameters(
+            reportID: reportID, kind: kind.rawValue, reason: reason,
+            endsAt: endsAt, note: note
+        )).execute()
+    }
+
+    func reviewAppeal(id: UUID, status: String, note: String) async throws {
+        guard let client = SupabaseService.client else { throw SupabaseServiceError.missingConfiguration }
+        try await client.rpc("review_account_sanction_appeal", params: [
+            "p_appeal_id": id.uuidString,
+            "p_status": status,
+            "p_note": note.trimmingCharacters(in: .whitespacesAndNewlines),
+        ]).execute()
+    }
+}
+
+private struct AccountSanctionActionParameters: Encodable, Sendable {
+    let reportID: UUID
+    let kind: String
+    let reason: String
+    let endsAt: Date?
+    let note: String
+
+    enum CodingKeys: String, CodingKey {
+        case reportID = "p_report_id"
+        case kind = "p_kind"
+        case reason = "p_reason"
+        case endsAt = "p_ends_at"
+        case note = "p_note"
+    }
+}
+
+private struct ModerationAppealFetchParameters: Encodable, Sendable {
+    let status: String?
+    let limit: Int
+
+    enum CodingKeys: String, CodingKey {
+        case status = "p_status"
+        case limit = "p_limit"
     }
 }
 

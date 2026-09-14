@@ -151,6 +151,112 @@ struct ModerationReportsView: View {
     }
 }
 
+struct ModerationAppealsView: View {
+    @State private var appeals: [ModerationAppealSnapshot] = []
+    @State private var selectedStatus: String? = "pending"
+    @State private var errorMessage: String?
+
+    var body: some View {
+        List {
+            Picker("상태", selection: $selectedStatus) {
+                Text("전체").tag(String?.none)
+                Text("검토 대기").tag(String?.some("pending"))
+                Text("검토 중").tag(String?.some("reviewing"))
+                Text("처리 완료").tag(String?.some("completed"))
+            }
+            if appeals.isEmpty {
+                ContentUnavailableView("이의 제기가 없습니다", systemImage: "checkmark.bubble", description: Text("선택한 상태에 해당하는 요청이 없어요."))
+                    .listRowBackground(Color.clear)
+            }
+            ForEach(appeals) { appeal in
+                NavigationLink {
+                    ModerationAppealDetailView(appeal: appeal) { await load() }
+                } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("\(appeal.userName) · @\(appeal.userHandle)").fontWeight(.semibold)
+                        Text(appeal.appealBody).lineLimit(2)
+                        Text(appeal.sanctionKind.title).font(.caption).foregroundStyle(WEARyTheme.coral)
+                    }
+                }
+            }
+        }
+        .navigationTitle("이의 제기 심사")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: selectedStatus) { await load() }
+        .refreshable { await load() }
+        .alert("불러오지 못했어요", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("확인", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    @MainActor private func load() async {
+        do {
+            let requestedStatus = selectedStatus == "completed" ? nil : selectedStatus
+            let result = try await SupabaseAccountSanctionRepository.shared.fetchModerationAppeals(status: requestedStatus)
+            appeals = selectedStatus == "completed" ? result.filter { ["accepted", "rejected"].contains($0.status) } : result
+        } catch { errorMessage = error.localizedDescription }
+    }
+}
+
+private struct ModerationAppealDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let appeal: ModerationAppealSnapshot
+    let onUpdated: () async -> Void
+    @State private var note: String
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    init(appeal: ModerationAppealSnapshot, onUpdated: @escaping () async -> Void) {
+        self.appeal = appeal
+        self.onUpdated = onUpdated
+        _note = State(initialValue: appeal.moderatorNote)
+    }
+
+    var body: some View {
+        Form {
+            Section("사용자") {
+                LabeledContent("닉네임", value: appeal.userName)
+                LabeledContent("아이디", value: "@\(appeal.userHandle)")
+            }
+            Section("기존 제재") {
+                LabeledContent("종류", value: appeal.sanctionKind.title)
+                Text(appeal.sanctionReason)
+            }
+            Section("이의 제기") { Text(appeal.appealBody) }
+            Section("운영 메모") {
+                TextEditor(text: $note).frame(minHeight: 100)
+                Text("\(note.count)/1,000").font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
+            }
+            if ["pending", "reviewing"].contains(appeal.status) {
+                Section("처리") {
+                    if appeal.status == "pending" { action("검토 시작", status: "reviewing") }
+                    action("인용하고 제재 해제", status: "accepted")
+                    action("기각하고 제재 유지", status: "rejected")
+                }
+            }
+        }
+        .navigationTitle("이의 제기")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("처리하지 못했어요", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("확인", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    private func action(_ title: String, status: String) -> some View {
+        Button(title) { Task { await review(status) } }.disabled(isWorking || note.count > 1_000)
+    }
+
+    @MainActor private func review(_ status: String) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await SupabaseAccountSanctionRepository.shared.reviewAppeal(id: appeal.id, status: status, note: note)
+            await onUpdated()
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
+    }
+}
+
 private enum ModerationReportFilter: String, CaseIterable, Identifiable {
     case all
     case pending
@@ -243,6 +349,8 @@ private struct ModerationReportDetailView: View {
     @State private var note: String
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var sanctionKind: AccountSanctionKind = .warning
+    @State private var restrictionDays = 7
 
     init(
         report: ModerationReportSnapshot,
@@ -302,8 +410,30 @@ private struct ModerationReportDetailView: View {
                 if report.status != .actioned, report.status != .dismissed {
                     actionButton("위반 없음으로 종료", status: .dismissed)
                 }
-                if report.status != .actioned {
+                if report.status != .actioned, report.targetType != "user" {
                     actionButton("조치 완료", status: .actioned)
+                }
+            }
+
+            if report.targetType == "user", report.status != .actioned {
+                Section {
+                    Picker("제재 종류", selection: $sanctionKind) {
+                        ForEach(AccountSanctionKind.allCases) { kind in
+                            Text(kind.title).tag(kind)
+                        }
+                    }
+                    if sanctionKind == .restriction {
+                        Stepper("제한 기간 \(restrictionDays)일", value: $restrictionDays, in: 1...365)
+                    }
+                    Button("계정 제재 및 조치 완료", role: .destructive) {
+                        Task { await actionUserReport() }
+                    }
+                    .disabled(isWorking || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("moderation.actionUser")
+                } header: {
+                    Text("계정 제재")
+                } footer: {
+                    Text("운영 메모가 사용자에게 제재 사유로 안내됩니다. 경고와 정지는 종료일이 없고, 이용 제한은 설정한 기간 후 자동 만료됩니다.")
                 }
             }
         }
@@ -347,6 +477,27 @@ private struct ModerationReportDetailView: View {
             Task { await update(status: status) }
         }
         .disabled(isWorking || note.count > 1_000)
+    }
+
+    @MainActor
+    private func actionUserReport() async {
+        guard !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
+        let endsAt = sanctionKind == .restriction
+            ? Calendar.current.date(byAdding: .day, value: restrictionDays, to: .now)
+            : nil
+        do {
+            try await SupabaseAccountSanctionRepository.shared.actionUserReport(
+                reportID: report.id,
+                kind: sanctionKind,
+                reason: note,
+                endsAt: endsAt,
+                note: note
+            )
+            await onUpdated()
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     @MainActor

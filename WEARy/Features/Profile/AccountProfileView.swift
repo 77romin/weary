@@ -48,6 +48,12 @@ struct AccountProfileView: View {
                             Label("신고 검토", systemImage: "checkmark.shield")
                         }
                         .accessibilityIdentifier("profile.moderationReports")
+                        NavigationLink {
+                            ModerationAppealsView()
+                        } label: {
+                            Label("이의 제기 심사", systemImage: "text.bubble")
+                        }
+                        .accessibilityIdentifier("profile.moderationAppeals")
                     }
                 }
                 Section {
