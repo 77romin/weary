@@ -22,8 +22,9 @@ WEARy의 데이터는 소유권과 공개 범위에 따라 두 영역으로 분�
 
 ```mermaid
 flowchart LR
-    A[SwiftData 로컬 캐시] <--> B[CloudKit Private DB]
-    A -->|사용자가 공개 확정| C[Supabase / WEARy API]
+    A[SwiftData 개인 저장소<br/>default.store] <--> B[CloudKit Private DB]
+    G[SwiftData 서비스 캐시<br/>service-cache.store] <--> C[Supabase / WEARy API]
+    A -->|사용자가 공개 확정| C
     C --> D[(Supabase PostgreSQL)]
     C --> E[(Supabase Storage)]
     F[다른 사용자 앱] <--> C
@@ -33,7 +34,14 @@ flowchart LR
 
 앱 삭제 후 재설치 시 같은 Apple 계정으로 iCloud에 로그인되어 있고 앱의 iCloud 사용이 허용되어 있다면, 개인 영역을 CloudKit에서 다시 동기화하는 경험을 목표로 한다. 동기화가 끝나기 전에는 빈 옷장으로 단정하지 않고 진행 상태를 표시해야 한다.
 
-## 2.1 기술 결정 — Supabase 우선
+### 2.1 현재 로컬 저장소 경계
+
+- 기존 앱의 `default.store`는 `Garment`, `Outfit`, `OutfitItem` 전용 개인 저장소로 그대로 승계해 업데이트 시 개인 기록을 유지한다.
+- `CommunityPost`, `MarketListing`은 별도 `service-cache.store`에 저장한다. 이 저장소는 Supabase 또는 데모 데이터에서 다시 만들 수 있으므로 CloudKit 동기화 대상이 아니다.
+- 개인 모델은 CloudKit에서 지원하지 않는 unique 제약을 제거하고 UUID를 애플리케이션 식별자로 유지한다. 필수 속성에는 기본값을 두고 모든 관계에는 역관계와 0개 허용 조건을 둔다.
+- 일반 `Debug`·`Release`는 개인 저장소도 로컬 전용이다. `CloudKitDebug`만 `iCloud.com.weary.prototype` private database를 요청하므로 미등록 컨테이너가 기존 개발 실행을 방해하지 않는다.
+
+## 2.2 기술 결정 — Supabase 우선
 
 2026-09-08 기준 공용 커뮤니티·마켓 백엔드는 Supabase를 1차 기술로 채택한다.
 
@@ -56,7 +64,7 @@ flowchart LR
 - 클라이언트가 보내는 좋아요 수, 작성자 ID와 판매 상태를 신뢰하지 않고 서버에서 검증한다.
 - 첫 서버 범위는 커뮤니티로 제한하고, 안정화 후 마켓과 채팅을 연결한다.
 
-### 2.2 현재 피드 동기화 상태
+### 2.3 현재 피드 동기화 상태
 
 - 앱 시작과 Pull-to-Refresh에서 `CommunityFeedRepository`가 공개 범위상 조회 가능한 최신 게시물을 15개씩 읽는다.
 - 게시물과 작성자 프로필, 아이템 스냅샷, 댓글, 좋아요, 북마크, 팔로우 상태를 한 번의 관계형 조회 결과로 구성한다.
@@ -72,7 +80,7 @@ flowchart LR
 - 생성 시각과 UUID의 복합 커서로 다음 페이지를 중복 없이 병합한다.
 - 게시물, 미디어, 아이템, 댓글, 좋아요, 북마크와 팔로우의 Realtime 변경을 감지하면 현재까지 읽은 원격 구간을 다시 동기화한다.
 
-### 2.3 현재 마켓 서버 기반 상태
+### 2.4 현재 마켓 서버 기반 상태
 
 - `market_listings`는 판매자, 가격과 직전 가격, 상품 스냅샷, 거래 상태와 지도 위치를 저장한다.
 - 가격이 바뀌면 PostgreSQL 트리거가 클라이언트 입력을 신뢰하지 않고 기존 가격을 `previous_price`에 기록한다.
@@ -167,7 +175,7 @@ erDiagram
 - 한 착장에는 같은 옷을 한 번만 연결한다. 앱 로직으로 `(outfit_id, garment_id)` 중복을 막는다.
 - `wear_count`, `last_worn_at`, `cost_per_wear`는 `OUTFIT_ITEM`과 `OUTFIT`에서 계산한다.
 - `is_published`는 개인 데이터의 진실 원천으로 두지 않는다. 서버 게시 결과를 추적하려면 `PUBLICATION_RECEIPT` 같은 로컬 영수증 모델을 별도로 추가한다.
-- CloudKit 동기화 모델에서는 UUID를 애플리케이션 수준 식별자로 사용하고, 현재의 `@Attribute(.unique)` 사용 가능 여부를 실제 CloudKit 컨테이너에서 검증한 뒤 스키마를 마이그레이션한다.
+- CloudKit 동기화 모델에서는 `@Attribute(.unique)` 없이 UUID를 애플리케이션 수준 식별자로 사용한다. 실제 컨테이너 연결 후 다기기 병합에서 논리 UUID 중복이 생기지 않는지 추가 검증한다.
 - 사진은 원본과 작은 누끼 이미지를 분리한다. 대용량 원본의 업로드 비용, iCloud 용량, 셀룰러 정책을 별도로 검증한다.
 
 ### 공개·판매 연결 영수증

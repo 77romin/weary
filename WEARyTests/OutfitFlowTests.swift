@@ -621,4 +621,76 @@ struct OutfitFlowTests {
 
         #expect(listing.isOwnedByCurrentUser)
     }
+
+    @Test("개인 옷장과 서비스 캐시는 서로 다른 저장소를 사용한다")
+    @MainActor
+    func separatesPersonalDataFromServiceCache() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "weary-persistence-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacyStoreURL = directory.appending(path: "default.store")
+        do {
+            let legacyConfiguration = ModelConfiguration(
+                "Legacy",
+                schema: AppModelContainerFactory.appSchema,
+                url: legacyStoreURL,
+                cloudKitDatabase: .none
+            )
+            let legacyContainer = try ModelContainer(
+                for: AppModelContainerFactory.appSchema,
+                configurations: [legacyConfiguration]
+            )
+            let legacyContext = legacyContainer.mainContext
+            legacyContext.insert(Garment(
+                name: "기존 개인 옷",
+                category: .top,
+                colorName: "화이트",
+                colorHex: "FFFFFF"
+            ))
+            legacyContext.insert(CommunityPost(
+                authorName: "기존 캐시 사용자",
+                authorHandle: "legacy-cache-user",
+                authorInitials: "기",
+                caption: "분리 전 서비스 캐시"
+            ))
+            try legacyContext.save()
+        }
+
+        let container = try AppModelContainerFactory.make(
+            isStoredInMemoryOnly: false,
+            baseDirectoryURL: directory,
+            cloudKitEnabled: false
+        )
+        let context = container.mainContext
+        context.insert(CommunityPost(
+            authorName: "캐시 사용자",
+            authorHandle: "cache-user",
+            authorInitials: "캐",
+            caption: "서비스 캐시"
+        ))
+        try context.save()
+
+        let configurationNames = Set(container.configurations.map(\.name))
+        #expect(configurationNames == ["Personal", "ServiceCache"])
+        #expect(FileManager.default.fileExists(atPath: legacyStoreURL.path()))
+        #expect(FileManager.default.fileExists(atPath: directory.appending(path: "service-cache.store").path()))
+        #expect(try context.fetchCount(FetchDescriptor<Garment>()) == 1)
+        #expect(try context.fetchCount(FetchDescriptor<CommunityPost>()) == 1)
+    }
+
+    @Test("개인 CloudKit 모델은 고유 제약 없이 기본값과 역관계를 갖는다")
+    func personalSchemaMeetsCloudKitRequirements() {
+        for entity in AppModelContainerFactory.personalSchema.entities {
+            #expect(entity.uniquenessConstraints.isEmpty)
+            for attribute in entity.attributes {
+                #expect(attribute.isOptional || attribute.defaultValue != nil)
+            }
+            for relationship in entity.relationships {
+                #expect(relationship.inverseName != nil)
+                #expect((relationship.minimumModelCount ?? 0) == 0)
+            }
+        }
+    }
 }

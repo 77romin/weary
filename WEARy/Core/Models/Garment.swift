@@ -52,18 +52,18 @@ enum GarmentStatus: String, CaseIterable, Codable, Identifiable {
 
 @Model
 final class Garment {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var brand: String
-    var categoryRaw: String
-    var colorName: String
-    var colorHex: String
+    var id: UUID = UUID()
+    var name: String = ""
+    var brand: String = ""
+    var categoryRaw: String = "상의"
+    var colorName: String = ""
+    var colorHex: String = "FFFFFF"
     var purchaseDate: Date?
     var purchasePrice: Int?
-    var size: String
-    var season: String
-    var statusRaw: String
-    var createdAt: Date
+    var size: String = ""
+    var season: String = "사계절"
+    var statusRaw: String = "입는 중"
+    var createdAt: Date = Date.now
     @Attribute(.externalStorage) var imageData: Data?
     @Attribute(.externalStorage) var cutoutImageData: Data?
 

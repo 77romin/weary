@@ -623,6 +623,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.weary.prototype;
 				PRODUCT_NAME = WEARy;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLOUDKIT_ENABLED";
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = CloudKitDebug;

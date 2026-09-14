@@ -181,7 +181,7 @@ AI는 착용 기록을 자동으로 확정하지 않습니다. 후보를 제안�
 ## 데이터 저장 방향
 
 - 옷, 비공개 착장, 구매 정보와 착용 통계는 사용자의 개인 데이터입니다.
-- 프로토타입은 기기 내부 SwiftData에 저장하며, 정식 버전에서는 SwiftData와 CloudKit 개인 데이터베이스를 연결합니다.
+- 개인 옷장·착장은 기존 `default.store`, 재생성 가능한 피드·마켓 캐시는 별도 `service-cache.store`에 저장합니다. 일반 Debug는 로컬 전용이며 `CloudKitDebug`에서만 개인 저장소의 CloudKit private database 연결을 활성화합니다.
 - 같은 Apple 계정과 iCloud 컨테이너를 사용하면 기기 변경이나 앱 재설치 후에도 개인 옷장을 복원할 수 있게 설계합니다.
 - 커뮤니티 게시글, 댓글, 팔로우, 신고와 중고거래 정보는 여러 사용자가 공유하므로 별도의 서비스 서버 영역으로 분리합니다.
 - 개인 착장을 커뮤니티에 게시할 때는 사용자가 공개를 확정한 데이터만 서버로 복사합니다.
@@ -401,6 +401,16 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
 - [x] 아이디 찾기용 이메일 본인 확인과 인증 딥링크 안내 구현
 - [x] 비밀번호 재설정·만료 링크·네트워크 오류 안내 보강
 
+### 2026-09-15 화요일 — 개인 저장소 CloudKit 준비
+
+- [x] 기존 통합 `default.store`의 개인 옷장·착장 데이터 승계
+- [x] 피드·마켓 로컬 캐시를 `service-cache.store`로 분리
+- [x] 개인 모델의 CloudKit 비호환 unique 제약 제거 및 필수 속성 기본값 적용
+- [x] 개인 모델 관계의 역관계와 0개 허용 조건 자동 검증
+- [x] 착장 원본 사진을 SwiftData 외부 저장소로 분리
+- [x] 일반 Debug·Release 로컬 저장과 `CloudKitDebug` private database 연결 분리
+- [x] 기존 저장소 마이그레이션·전체 단위 테스트 42개·UI 테스트 12개 통과
+
 ### 프로토타입 이후
 
 - [ ] 사용자 인터뷰로 핵심 흐름과 가치 검증
@@ -412,12 +422,12 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
   - [x] `CloudKitDebug` 구성에 iCloud entitlement와 원격 알림 Background Mode 반영
   - [x] 개인 개발용 `Debug` 구성을 분리해 기존 iPhone 실행 경로 유지
   - [ ] 유료 Apple Developer 팀 연결 후 `iCloud.com.weary.prototype` 컨테이너 등록
-- [ ] SwiftData 모델의 CloudKit 호환성 검증 및 마이그레이션
+- [x] SwiftData 모델의 CloudKit 호환성 검증 및 로컬 저장소 마이그레이션
   - [x] 커뮤니티·마켓이 개인 객체 대신 게시 시점 스냅샷을 읽도록 전환
   - [x] 기존 게시물·매물의 스냅샷 자동 백필 1단계 실행
   - [x] 레거시 교차 관계 제거 및 UUID 기반 개인 옷 상태 연결
-  - [ ] 개인 CloudKit 저장소와 서비스 Mock 저장소 분리
-  - [ ] CloudKit 제약에 맞춰 개인 모델의 unique·기본값·관계 검증
+  - [x] 기존 `default.store` 개인 저장소와 `service-cache.store` 서비스 캐시 분리
+  - [x] CloudKit 제약에 맞춰 개인 모델의 unique 제거·기본값·역관계 검증
 - [x] 커뮤니티 서버 기술 스택을 Supabase로 결정
 - [x] 첫 서버 범위를 커뮤니티 우선으로 결정
 - [x] Supabase 개발 프로젝트와 로컬 개발 환경 구성

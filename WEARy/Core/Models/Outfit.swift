@@ -14,13 +14,13 @@ enum MatchConfidence: String, Codable {
 
 @Model
 final class Outfit {
-    @Attribute(.unique) var id: UUID
-    var wornAt: Date
-    var note: String
-    var isConfirmed: Bool
-    var isPublished: Bool
-    var createdAt: Date
-    var photoData: Data?
+    var id: UUID = UUID()
+    var wornAt: Date = Date.now
+    var note: String = ""
+    var isConfirmed: Bool = true
+    var isPublished: Bool = false
+    var createdAt: Date = Date.now
+    @Attribute(.externalStorage) var photoData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \OutfitItem.outfit)
     var items: [OutfitItem] = []
@@ -69,9 +69,9 @@ final class Outfit {
 
 @Model
 final class OutfitItem {
-    @Attribute(.unique) var id: UUID
-    var sourceRaw: String
-    var confidenceRaw: String
+    var id: UUID = UUID()
+    var sourceRaw: String = "manual"
+    var confidenceRaw: String = "none"
     var displayOrder: Int?
     var garment: Garment?
     var outfit: Outfit?

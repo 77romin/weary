@@ -5,18 +5,10 @@ import SwiftUI
 struct WEARyApp: App {
     @StateObject private var authentication = AuthenticationStore()
     private let modelContainer: ModelContainer = {
-        let schema = Schema([
-            Garment.self,
-            Outfit.self,
-            OutfitItem.self,
-            CommunityPost.self,
-            MarketListing.self,
-        ])
         let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: isUITesting)
 
         do {
-            return try ModelContainer(for: schema, configurations: configuration)
+            return try AppModelContainerFactory.make(isStoredInMemoryOnly: isUITesting)
         } catch {
             fatalError("ModelContainer 생성 실패: \(error)")
         }
@@ -29,6 +21,86 @@ struct WEARyApp: App {
                 .environmentObject(authentication)
         }
         .modelContainer(modelContainer)
+    }
+}
+
+enum AppModelContainerFactory {
+    static let cloudKitContainerIdentifier = "iCloud.com.weary.prototype"
+
+    static let personalSchema = Schema([
+        Garment.self,
+        Outfit.self,
+        OutfitItem.self,
+    ])
+
+    static let serviceCacheSchema = Schema([
+        CommunityPost.self,
+        MarketListing.self,
+    ])
+
+    static let appSchema = Schema([
+        Garment.self,
+        Outfit.self,
+        OutfitItem.self,
+        CommunityPost.self,
+        MarketListing.self,
+    ])
+
+    static func make(
+        isStoredInMemoryOnly: Bool,
+        baseDirectoryURL: URL? = nil,
+        cloudKitEnabled: Bool = defaultCloudKitEnabled
+    ) throws -> ModelContainer {
+        let personalConfiguration: ModelConfiguration
+        let serviceCacheConfiguration: ModelConfiguration
+
+        if isStoredInMemoryOnly {
+            personalConfiguration = ModelConfiguration(
+                "Personal",
+                schema: personalSchema,
+                isStoredInMemoryOnly: true,
+                cloudKitDatabase: .none
+            )
+            serviceCacheConfiguration = ModelConfiguration(
+                "ServiceCache",
+                schema: serviceCacheSchema,
+                isStoredInMemoryOnly: true,
+                cloudKitDatabase: .none
+            )
+        } else {
+            let legacyStoreURL = baseDirectoryURL?.appending(path: "default.store")
+                ?? ModelConfiguration().url
+            let cacheStoreURL = legacyStoreURL
+                .deletingLastPathComponent()
+                .appending(path: "service-cache.store")
+            personalConfiguration = ModelConfiguration(
+                "Personal",
+                schema: personalSchema,
+                url: legacyStoreURL,
+                cloudKitDatabase: cloudKitEnabled
+                    ? .private(cloudKitContainerIdentifier)
+                    : .none
+            )
+            serviceCacheConfiguration = ModelConfiguration(
+                "ServiceCache",
+                schema: serviceCacheSchema,
+                url: cacheStoreURL,
+                cloudKitDatabase: .none
+            )
+        }
+
+        return try ModelContainer(
+            for: appSchema,
+            configurations: [personalConfiguration, serviceCacheConfiguration]
+        )
+    }
+
+    static var defaultCloudKitEnabled: Bool {
+#if CLOUDKIT_ENABLED
+        true
+#else
+        false
+#endif
     }
 }
 
