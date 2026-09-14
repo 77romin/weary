@@ -115,6 +115,7 @@ struct RemoteSellerChatListView: View {
 
 struct RemoteMarketChatView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let listing: MarketListing
     let counterpartName: String
     @State private var conversationID: UUID?
@@ -124,6 +125,7 @@ struct RemoteMarketChatView: View {
     @State private var isLoading = true
     @State private var isSending = false
     @State private var chatError: String?
+    @State private var writeStatus: MarketChatWriteStatus?
 
     init(
         listing: MarketListing,
@@ -153,6 +155,10 @@ struct RemoteMarketChatView: View {
             }
             .task { await prepareConversation() }
             .task(id: conversationID) { await runMessages() }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                Task { await refreshWriteStatus() }
+            }
             .alert("채팅 요청 실패", isPresented: marketChatErrorPresentation($chatError)) {
                 Button("확인", role: .cancel) { }
             } message: {
@@ -218,15 +224,30 @@ struct RemoteMarketChatView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("메시지", text: $input, axis: .vertical)
-                .lineLimit(1...4)
-                .textFieldStyle(.roundedBorder)
-            Button("전송") { Task { await sendMessage() } }
-                .fontWeight(.bold)
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+        Group {
+            if let notice = writeStatus?.notice {
+                Label(notice, systemImage: "exclamationmark.shield.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+            } else {
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("메시지", text: $input, axis: .vertical)
+                        .lineLimit(1...4)
+                        .textFieldStyle(.roundedBorder)
+                    Button("전송") { Task { await sendMessage() } }
+                        .fontWeight(.bold)
+                        .disabled(
+                            writeStatus != .allowed
+                            || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || isSending
+                        )
+                }
+                .padding()
+            }
         }
-        .padding()
         .background(WEARyTheme.surface)
     }
 
@@ -256,6 +277,7 @@ struct RemoteMarketChatView: View {
                 conversationID = try await SupabaseMarketChatRepository.shared
                     .findBuyerConversation(listingID: listing.id)
             }
+            await refreshWriteStatus()
             chatError = nil
         } catch {
             chatError = error.localizedDescription
@@ -288,6 +310,7 @@ struct RemoteMarketChatView: View {
         do {
             messages = try await SupabaseMarketChatRepository.shared
                 .fetchMessages(conversationID: conversationID)
+            await refreshWriteStatus()
             chatError = nil
         } catch {
             chatError = error.localizedDescription
@@ -316,6 +339,22 @@ struct RemoteMarketChatView: View {
             input = ""
             await refreshMessages(conversationID: activeConversationID)
         } catch {
+            await refreshWriteStatus()
+            if writeStatus == .allowed {
+                chatError = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func refreshWriteStatus() async {
+        do {
+            writeStatus = try await SupabaseMarketChatRepository.shared.fetchWriteStatus(
+                listingID: listing.id,
+                conversationID: conversationID
+            )
+        } catch {
+            writeStatus = nil
             chatError = error.localizedDescription
         }
     }

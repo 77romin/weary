@@ -21,6 +21,33 @@ struct MarketMessageSnapshot: Identifiable, Sendable {
     let createdAt: Date
 }
 
+enum MarketChatWriteStatus: String, Decodable, Sendable {
+    case allowed
+    case selfSanctioned = "self_sanctioned"
+    case counterpartSanctioned = "counterpart_sanctioned"
+    case blockedBySelf = "blocked_by_self"
+    case blockedByCounterpart = "blocked_by_counterpart"
+    case notParticipant = "not_participant"
+    case notAuthenticated = "not_authenticated"
+
+    var notice: String? {
+        switch self {
+        case .allowed:
+            nil
+        case .selfSanctioned:
+            "정책 위반으로 채팅 이용이 제한되었습니다."
+        case .counterpartSanctioned:
+            "이 사용자는 정책위반으로 차단된 사용자입니다."
+        case .blockedBySelf:
+            "차단한 사용자와는 메시지를 주고받을 수 없습니다."
+        case .blockedByCounterpart:
+            "이 사용자와는 메시지를 주고받을 수 없습니다."
+        case .notParticipant, .notAuthenticated:
+            "현재 이 대화에서 메시지를 보낼 수 없습니다."
+        }
+    }
+}
+
 actor SupabaseMarketChatRepository {
     static let shared = SupabaseMarketChatRepository()
 
@@ -111,6 +138,23 @@ actor SupabaseMarketChatRepository {
                 body: trimmedBody
             ))
             .execute()
+    }
+
+    func fetchWriteStatus(
+        listingID: UUID,
+        conversationID: UUID?
+    ) async throws -> MarketChatWriteStatus {
+        let (client, _) = try await authenticatedContext()
+        return try await client
+            .rpc(
+                "get_market_chat_write_status",
+                params: MarketChatWriteStatusParameters(
+                    listingID: listingID,
+                    conversationID: conversationID
+                )
+            )
+            .execute()
+            .value
     }
 
     func currentUserID() async throws -> UUID {
@@ -261,6 +305,16 @@ private struct MarketConversationParameters: Encodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case listingID = "p_listing_id"
+    }
+}
+
+private struct MarketChatWriteStatusParameters: Encodable, Sendable {
+    let listingID: UUID
+    let conversationID: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case listingID = "p_listing_id"
+        case conversationID = "p_conversation_id"
     }
 }
 

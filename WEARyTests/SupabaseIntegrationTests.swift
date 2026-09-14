@@ -614,11 +614,81 @@ struct SupabaseIntegrationTests {
             #expect(messages.count == 2)
             #expect(messages.last?.senderID == seller.userID)
             #expect(messages.last?.body == sellerMessage)
+
+            try await SupabaseContentSafetyRepository.shared.setBlocked(
+                userID: seller.userID,
+                isBlocked: true
+            )
+            #expect(
+                try await chat.fetchWriteStatus(
+                    listingID: listingID,
+                    conversationID: conversationID
+                ) == .blockedBySelf
+            )
+
+            var buyerMessageAfterBlockWasRejected = false
+            do {
+                try await chat.sendMessage(
+                    conversationID: conversationID,
+                    body: "차단 후 전송되면 안 되는 구매자 메시지"
+                )
+            } catch {
+                buyerMessageAfterBlockWasRejected = true
+            }
+            #expect(buyerMessageAfterBlockWasRejected)
+
+            let sellerStatusData = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/rpc/get_market_chat_write_status",
+                configuration: configuration,
+                token: seller.token,
+                body: [
+                    "p_listing_id": listingID.uuidString,
+                    "p_conversation_id": conversationID.uuidString,
+                ]
+            )
+            #expect(try JSONDecoder().decode(String.self, from: sellerStatusData) == "blocked_by_counterpart")
+
+            var sellerMessageAfterBlockWasRejected = false
+            do {
+                try await restRequest(
+                    method: "POST",
+                    path: "/rest/v1/market_messages",
+                    configuration: configuration,
+                    token: seller.token,
+                    body: [
+                        "conversation_id": conversationID.uuidString,
+                        "sender_id": seller.userID.uuidString,
+                        "body": "차단 후 전송되면 안 되는 판매자 메시지",
+                    ]
+                )
+            } catch {
+                sellerMessageAfterBlockWasRejected = true
+            }
+            #expect(sellerMessageAfterBlockWasRejected)
+
+            messages = try await chat.fetchMessages(conversationID: conversationID)
+            #expect(messages.count == 2)
+
+            try await SupabaseContentSafetyRepository.shared.setBlocked(
+                userID: seller.userID,
+                isBlocked: false
+            )
+            #expect(
+                try await chat.fetchWriteStatus(
+                    listingID: listingID,
+                    conversationID: conversationID
+                ) == .allowed
+            )
         } catch {
             capturedError = error
         }
 
         await SupabaseMarketMessageRealtimeRepository.shared.stop()
+        _ = try? await SupabaseContentSafetyRepository.shared.setBlocked(
+            userID: seller.userID,
+            isBlocked: false
+        )
         _ = try? await restRequest(
             method: "DELETE",
             path: "/rest/v1/market_listings?id=eq.\(listingID.uuidString)",
