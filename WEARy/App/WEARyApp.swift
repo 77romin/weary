@@ -34,6 +34,7 @@ struct WEARyApp: App {
 
 private struct AppEntryView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var authentication: AuthenticationStore
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var didCompleteForcedOnboarding = false
@@ -81,6 +82,10 @@ private struct AppEntryView: View {
         }
         .onOpenURL { url in
             Task { await authentication.handleIncomingURL(url) }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await authentication.refreshAccountSanction() }
         }
         .sheet(isPresented: $authentication.requiresPasswordUpdate) {
             PasswordUpdateView()

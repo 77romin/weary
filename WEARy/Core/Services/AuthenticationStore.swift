@@ -431,6 +431,23 @@ final class AuthenticationStore: ObservableObject {
         await clearSession()
     }
 
+    func refreshAccountSanction() async {
+        guard let user = SupabaseService.client?.auth.currentUser,
+              !user.isAnonymous else {
+            activeAccountSanction = nil
+            return
+        }
+
+        do {
+            let (sanctions, _) = try await SupabaseAccountSanctionRepository.shared.fetchMine()
+            activeAccountSanction = sanctions.first {
+                $0.isActive && $0.kind != .warning
+            }
+        } catch {
+            // Keep the last known state when a transient network failure occurs.
+        }
+    }
+
     private func configuredClient() throws -> SupabaseClient {
         guard let client = SupabaseService.client else {
             throw SupabaseServiceError.missingConfiguration
@@ -467,13 +484,8 @@ final class AuthenticationStore: ObservableObject {
         isPasswordAccount = session.user.identities?.contains { $0.provider == "email" } == true
         await SupabaseSessionManager.shared.update(userID: session.user.id)
         profile = try? await AccountProfileRepository.shared.fetch(userID: session.user.id)
-        if let result = try? await SupabaseAccountSanctionRepository.shared.fetchMine() {
-            activeAccountSanction = result.0.first {
-                $0.isActive && $0.kind != .warning
-            }
-        } else {
-            activeAccountSanction = nil
-        }
+        activeAccountSanction = nil
+        await refreshAccountSanction()
         phase = .signedIn
     }
 

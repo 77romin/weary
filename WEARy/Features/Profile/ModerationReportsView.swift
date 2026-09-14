@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AccountSanctionsView: View {
+    @EnvironmentObject private var authentication: AuthenticationStore
     @State private var sanctions: [AccountSanctionSnapshot] = []
     @State private var appeals: [AccountSanctionAppealSnapshot] = []
     @State private var selectedSanction: AccountSanctionSnapshot?
@@ -57,7 +58,10 @@ struct AccountSanctionsView: View {
     }
 
     @MainActor private func load() async {
-        do { (sanctions, appeals) = try await SupabaseAccountSanctionRepository.shared.fetchMine() }
+        do {
+            (sanctions, appeals) = try await SupabaseAccountSanctionRepository.shared.fetchMine()
+            await authentication.refreshAccountSanction()
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
