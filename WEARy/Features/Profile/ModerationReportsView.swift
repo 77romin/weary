@@ -1,5 +1,80 @@
 import SwiftUI
 
+struct AccountSanctionsView: View {
+    @State private var sanctions: [AccountSanctionSnapshot] = []
+    @State private var appeals: [AccountSanctionAppealSnapshot] = []
+    @State private var selectedSanction: AccountSanctionSnapshot?
+    @State private var appealBody = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        List {
+            if sanctions.isEmpty {
+                ContentUnavailableView("계정 제재 내역이 없어요", systemImage: "checkmark.shield", description: Text("운영 정책 관련 안내와 이의 제기 상태를 여기서 확인할 수 있어요."))
+                    .listRowBackground(Color.clear)
+            }
+            ForEach(sanctions) { sanction in
+                Section {
+                    Text(sanction.reason)
+                    if let end = sanction.endsAt { LabeledContent("종료 예정", value: end.formatted(date: .abbreviated, time: .shortened)) }
+                    if let appeal = appeals.first(where: { $0.sanctionID == sanction.id }) {
+                        LabeledContent("이의 제기", value: appealStatus(appeal.status))
+                        if !appeal.moderatorNote.isEmpty { Text(appeal.moderatorNote).foregroundStyle(WEARyTheme.secondaryInk) }
+                    } else if sanction.isActive {
+                        Button("이의 제기") { selectedSanction = sanction }
+                    }
+                } header: {
+                    Label(sanction.kind.title, systemImage: sanction.isActive ? "exclamationmark.shield.fill" : "checkmark.shield")
+                }
+            }
+        }
+        .navigationTitle("계정 제재·이의 제기")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+        .refreshable { await load() }
+        .sheet(item: $selectedSanction) { sanction in
+            NavigationStack {
+                Form {
+                    Section("제재 사유") { Text(sanction.reason) }
+                    Section("이의 제기 내용") {
+                        TextEditor(text: $appealBody).frame(minHeight: 150)
+                        Text("\(appealBody.count)/2,000").font(.caption).foregroundStyle(WEARyTheme.secondaryInk)
+                    }
+                }
+                .navigationTitle("이의 제기")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("취소") { selectedSanction = nil } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("제출") { Task { await submit(for: sanction) } }
+                            .disabled(appealBody.trimmingCharacters(in: .whitespacesAndNewlines).count < 10 || appealBody.count > 2_000)
+                    }
+                }
+            }
+        }
+        .alert("처리하지 못했어요", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("확인", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    @MainActor private func load() async {
+        do { (sanctions, appeals) = try await SupabaseAccountSanctionRepository.shared.fetchMine() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    @MainActor private func submit(for sanction: AccountSanctionSnapshot) async {
+        do {
+            try await SupabaseAccountSanctionRepository.shared.submitAppeal(sanctionID: sanction.id, body: appealBody)
+            appealBody = ""
+            selectedSanction = nil
+            await load()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func appealStatus(_ value: String) -> String {
+        ["pending": "검토 대기", "reviewing": "검토 중", "accepted": "인용", "rejected": "기각"][value] ?? value
+    }
+}
+
 struct ModerationReportsView: View {
     @State private var selectedFilter: ModerationReportFilter = .pending
     @State private var reports: [ModerationReportSnapshot] = []

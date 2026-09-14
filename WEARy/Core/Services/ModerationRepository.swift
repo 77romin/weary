@@ -143,3 +143,87 @@ enum ModerationError: LocalizedError {
         }
     }
 }
+
+enum AccountSanctionKind: String, Decodable, Sendable {
+    case warning
+    case restriction
+    case suspension
+
+    var title: String {
+        switch self {
+        case .warning: "경고"
+        case .restriction: "이용 제한"
+        case .suspension: "계정 정지"
+        }
+    }
+}
+
+struct AccountSanctionSnapshot: Identifiable, Decodable, Sendable {
+    let id: UUID
+    let kind: AccountSanctionKind
+    let reason: String
+    let startsAt: Date
+    let endsAt: Date?
+    let liftedAt: Date?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, reason
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case liftedAt = "lifted_at"
+        case createdAt = "created_at"
+    }
+
+    var isActive: Bool {
+        liftedAt == nil && (endsAt == nil || endsAt! > .now)
+    }
+}
+
+struct AccountSanctionAppealSnapshot: Identifiable, Decodable, Sendable {
+    let id: UUID
+    let sanctionID: UUID
+    let body: String
+    let status: String
+    let moderatorNote: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, body, status
+        case sanctionID = "sanction_id"
+        case moderatorNote = "moderator_note"
+        case createdAt = "created_at"
+    }
+}
+
+actor SupabaseAccountSanctionRepository {
+    static let shared = SupabaseAccountSanctionRepository()
+
+    func fetchMine() async throws -> ([AccountSanctionSnapshot], [AccountSanctionAppealSnapshot]) {
+        guard let client = SupabaseService.client else { throw SupabaseServiceError.missingConfiguration }
+        let userID = try await SupabaseSessionManager.shared.authenticatedUserID()
+        async let sanctions: [AccountSanctionSnapshot] = client.from("account_sanctions")
+            .select("id,kind,reason,starts_at,ends_at,lifted_at,created_at")
+            .eq("user_id", value: userID.uuidString).order("created_at", ascending: false).execute().value
+        async let appeals: [AccountSanctionAppealSnapshot] = client.from("account_sanction_appeals")
+            .select("id,sanction_id,body,status,moderator_note,created_at")
+            .eq("user_id", value: userID.uuidString).order("created_at", ascending: false).execute().value
+        return try await (sanctions, appeals)
+    }
+
+    func submitAppeal(sanctionID: UUID, body: String) async throws {
+        guard body.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10 else {
+            throw AccountSanctionError.appealTooShort
+        }
+        guard let client = SupabaseService.client else { throw SupabaseServiceError.missingConfiguration }
+        try await client.rpc("submit_account_sanction_appeal", params: [
+            "p_sanction_id": sanctionID.uuidString,
+            "p_body": body.trimmingCharacters(in: .whitespacesAndNewlines),
+        ]).execute()
+    }
+}
+
+enum AccountSanctionError: LocalizedError {
+    case appealTooShort
+    var errorDescription: String? { "이의 제기 사유를 10자 이상 입력해 주세요." }
+}

@@ -66,6 +66,18 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["나의 착장 캘린더"].exists)
     }
 
+    func testMyAccountProvidesSanctionAndAppealHistory() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["MY"].tap()
+        app.buttons["profile.account"].tap()
+        XCTAssertTrue(app.navigationBars["내 정보"].waitForExistence(timeout: 3))
+        for _ in 0..<4 where !app.buttons["profile.accountSanctions"].exists { app.swipeUp() }
+        app.buttons["profile.accountSanctions"].tap()
+        XCTAssertTrue(app.navigationBars["계정 제재·이의 제기"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["계정 제재 내역이 없어요"].exists)
+    }
+
     func testCommunityAndMarketTabsHaveSeedContent() throws {
         continueAfterFailure = false
         let app = launchApp()

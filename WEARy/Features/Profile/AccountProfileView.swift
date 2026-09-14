@@ -32,6 +32,14 @@ struct AccountProfileView: View {
                 bodySection
                 optionalMeasurementsSection
                 passwordSection
+                Section("계정 안전") {
+                    NavigationLink {
+                        AccountSanctionsView()
+                    } label: {
+                        Label("계정 제재·이의 제기", systemImage: "exclamationmark.shield")
+                    }
+                    .accessibilityIdentifier("profile.accountSanctions")
+                }
                 if isModerator {
                     Section("운영") {
                         NavigationLink {

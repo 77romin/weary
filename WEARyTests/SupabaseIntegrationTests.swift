@@ -981,6 +981,77 @@ struct SupabaseIntegrationTests {
         )
     }
 
+    @Test("계정 제재와 이의 제기는 사용자 소유권과 운영자 권한을 보호한다")
+    func protectsAccountSanctionsAndAppeals() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
+        let configuration = try supabaseConfiguration()
+        let regularUser = try await createAnonymousSession(configuration: configuration)
+
+        let visibleData = try await restRequest(
+            method: "GET",
+            path: "/rest/v1/account_sanctions?select=id,user_id",
+            configuration: configuration,
+            token: regularUser.token
+        )
+        let visibleRows = try JSONSerialization.jsonObject(with: visibleData) as? [[String: Any]]
+        #expect(visibleRows?.isEmpty == true)
+
+        var directInsertDenied = false
+        do {
+            _ = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/account_sanctions",
+                configuration: configuration,
+                token: regularUser.token,
+                body: [
+                    "user_id": regularUser.userID.uuidString,
+                    "kind": "warning",
+                    "reason": "위조 제재",
+                ]
+            )
+        } catch { directInsertDenied = true }
+        #expect(directInsertDenied)
+
+        var moderatorRPCDenied = false
+        do {
+            _ = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/rpc/create_account_sanction",
+                configuration: configuration,
+                token: regularUser.token,
+                body: [
+                    "p_user_id": regularUser.userID.uuidString,
+                    "p_kind": "warning",
+                    "p_reason": "위조 제재",
+                ]
+            )
+        } catch { moderatorRPCDenied = true }
+        #expect(moderatorRPCDenied)
+
+        var foreignAppealDenied = false
+        do {
+            _ = try await restRequest(
+                method: "POST",
+                path: "/rest/v1/rpc/submit_account_sanction_appeal",
+                configuration: configuration,
+                token: regularUser.token,
+                body: [
+                    "p_sanction_id": UUID().uuidString,
+                    "p_body": "본인 소유가 아닌 제재에는 이의 제기할 수 없습니다.",
+                ]
+            )
+        } catch { foreignAppealDenied = true }
+        #expect(foreignAppealDenied)
+
+        _ = try? await restRequest(
+            method: "POST",
+            path: "/rest/v1/rpc/delete_current_user",
+            configuration: configuration,
+            token: regularUser.token,
+            body: [:]
+        )
+    }
+
     @Test("사용자는 운영 알림을 위조할 수 없고 본인 알림만 읽는다")
     func protectsUserNotices() async throws {
         guard ProcessInfo.processInfo.environment["RUN_SUPABASE_INTEGRATION"] == "1" else { return }
