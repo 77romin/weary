@@ -44,7 +44,7 @@ struct OnboardingView: View {
                         advance()
                     } label: {
                         HStack {
-                            Text(page == .discovery ? "내 옷장 시작하기" : "다음")
+                            Text(page == .discovery ? "!WEARy 시작하기" : "다음")
                             Spacer()
                             Image(systemName: page == .discovery ? "hanger" : "arrow.right")
                         }

@@ -120,10 +120,15 @@ private struct AppEntryView: View {
         Group {
             if isPreparingApp {
                 StartupLoadingView()
+            } else if shouldShowOnboarding {
+                OnboardingView {
+                    hasCompletedOnboarding = true
+                    didCompleteForcedOnboarding = true
+                }
             } else if forcesAuthentication {
                 AuthenticationView()
             } else if isUITesting {
-                testedContent
+                RootTabView()
             } else {
                 switch authentication.phase {
                 case .loading:
@@ -131,7 +136,7 @@ private struct AppEntryView: View {
                 case .signedOut:
                     AuthenticationView()
                 case .signedIn:
-                    authenticatedContent
+                    RootTabView()
                 }
             }
         }
@@ -169,30 +174,6 @@ private struct AppEntryView: View {
             Button("확인", role: .cancel) { authentication.accountNotice = nil }
         } message: {
             Text(authentication.accountNotice ?? "")
-        }
-    }
-
-    @ViewBuilder
-    private var testedContent: some View {
-        if shouldShowOnboarding {
-            OnboardingView {
-                hasCompletedOnboarding = true
-                didCompleteForcedOnboarding = true
-            }
-        } else {
-            RootTabView()
-        }
-    }
-
-    @ViewBuilder
-    private var authenticatedContent: some View {
-        if shouldShowOnboarding {
-            OnboardingView {
-                hasCompletedOnboarding = true
-                didCompleteForcedOnboarding = true
-            }
-        } else {
-            RootTabView()
         }
     }
 
