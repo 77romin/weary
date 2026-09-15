@@ -7,7 +7,15 @@ struct MarketView: View {
     @Query(sort: \MarketListing.createdAt, order: .reverse) private var listings: [MarketListing]
     @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @State private var showingSellFlow = false
+    @State private var remoteCursor: MarketListingCursor?
+    @State private var hasMoreRemoteListings = false
+    @State private var isLoadingMore = false
+    @State private var isInitialRemoteLoading = false
+    @State private var loadedRemoteLimit = 15
+    @State private var remoteSyncError: String?
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    private let remotePageSize = 15
+    private let maximumRemoteWindow = 100
 
     private var contentMode: SocialContentMode {
         SocialContentMode(rawValue: contentModeRaw) ?? .live
@@ -24,17 +32,34 @@ struct MarketView: View {
         NavigationStack {
             ZStack {
                 WEARyTheme.canvas.ignoresSafeArea()
-                if visibleListings.isEmpty {
-                    ContentUnavailableView(
-                        contentMode == .live ? "아직 서버 매물이 없어요" : "데모 매물이 없어요",
-                        systemImage: contentMode == .live ? "network" : "sparkles",
-                        description: Text(contentMode == .live
-                            ? "판매 버튼으로 친구들에게 보일 첫 매물을 등록해 보세요."
-                            : "MY에서 데모 데이터를 초기화하면 발표용 매물을 다시 만들 수 있어요.")
-                    )
+                if contentMode == .live && isInitialRemoteLoading && visibleListings.isEmpty {
+                    ProgressView("마켓 불러오는 중…")
+                } else if contentMode == .live && remoteSyncError != nil && visibleListings.isEmpty {
+                    ContentUnavailableView {
+                        Label("마켓을 불러오지 못했어요", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text("연결을 확인한 뒤 다시 시도해 주세요. 기존 캐시가 있으면 그대로 유지됩니다.")
+                    } actions: {
+                        Button("다시 시도") { Task { await syncRemoteMarket() } }
+                            .accessibilityIdentifier("market.retry")
+                    }
+                } else if visibleListings.isEmpty {
+                    VStack {
+                        ContentUnavailableView(
+                            contentMode == .live ? "아직 서버 매물이 없어요" : "데모 매물이 없어요",
+                            systemImage: contentMode == .live ? "network" : "sparkles",
+                            description: Text(contentMode == .live
+                                ? "판매 버튼으로 친구들에게 보일 첫 매물을 등록해 보세요."
+                                : "MY에서 데모 데이터를 초기화하면 발표용 매물을 다시 만들 수 있어요.")
+                        )
+                        if hasMoreRemoteListings {
+                            ProgressView("차단하지 않은 매물 찾는 중…")
+                                .task(id: remoteCursor?.id) { await loadMoreRemoteMarket() }
+                        }
+                    }
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
+                        LazyVStack(alignment: .leading, spacing: 18) {
                             contentModeBadge
                             Text("옷장에서 다음 옷장으로")
                                 .font(.system(.title2, design: .rounded, weight: .bold))
@@ -45,6 +70,19 @@ struct MarketView: View {
                                     }
                                     .buttonStyle(.plain)
                                 }
+                            }
+                            if hasMoreRemoteListings {
+                                ProgressView("이전 매물 불러오는 중…")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 18)
+                                    .task(id: remoteCursor?.id) { await loadMoreRemoteMarket() }
+                                    .accessibilityIdentifier("market.loadMore")
+                            }
+                            if remoteSyncError != nil, contentMode == .live {
+                                Text("추가 매물을 불러오지 못했어요. 아래로 당겨 다시 시도해 주세요.")
+                                    .font(.caption)
+                                    .foregroundStyle(WEARyTheme.secondaryInk)
+                                    .accessibilityIdentifier("market.syncError")
                             }
                         }
                         .padding(18)
@@ -74,6 +112,10 @@ struct MarketView: View {
                 if contentMode == .live {
                     await runRemoteMarket()
                 } else {
+                    remoteCursor = nil
+                    hasMoreRemoteListings = false
+                    loadedRemoteLimit = remotePageSize
+                    remoteSyncError = nil
                     await SupabaseMarketRealtimeRepository.shared.stop()
                 }
             }
@@ -96,18 +138,51 @@ struct MarketView: View {
 
     @MainActor
     private func syncRemoteMarket() async {
+        let showsInitialLoading = visibleListings.isEmpty
+        if showsInitialLoading { isInitialRemoteLoading = true }
+        defer { if showsInitialLoading { isInitialRemoteLoading = false } }
         do {
-            let remoteListings = try await SupabaseMarketListingRepository.shared.fetchListings(limit: 30)
+            let page = try await SupabaseMarketListingRepository.shared.fetchPage(
+                before: nil, limit: loadedRemoteLimit
+            )
             try MarketListingCacheStore.replaceRemoteListings(
-                with: remoteListings,
+                with: page.listings,
                 in: modelContext
             )
+            remoteCursor = page.nextCursor
+            hasMoreRemoteListings = page.hasMore && loadedRemoteLimit < maximumRemoteWindow
+            remoteSyncError = nil
 #if DEBUG
-            print("원격 마켓 동기화 완료: \(remoteListings.count)개")
+            print("원격 마켓 동기화 완료: \(page.listings.count)개")
 #endif
         } catch {
+            remoteSyncError = error.localizedDescription
 #if DEBUG
             print("원격 마켓 동기화 실패, 로컬 캐시를 유지합니다: \(error.localizedDescription)")
+#endif
+        }
+    }
+
+    @MainActor
+    private func loadMoreRemoteMarket() async {
+        guard contentMode == .live, hasMoreRemoteListings, !isLoadingMore,
+              let remoteCursor, loadedRemoteLimit < maximumRemoteWindow else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        let remaining = maximumRemoteWindow - loadedRemoteLimit
+        do {
+            let page = try await SupabaseMarketListingRepository.shared.fetchPage(
+                before: remoteCursor, limit: min(remotePageSize, remaining)
+            )
+            try MarketListingCacheStore.mergeRemotePage(page.listings, in: modelContext)
+            self.remoteCursor = page.nextCursor
+            loadedRemoteLimit += min(remotePageSize, remaining)
+            hasMoreRemoteListings = page.hasMore && loadedRemoteLimit < maximumRemoteWindow
+            remoteSyncError = nil
+        } catch {
+            remoteSyncError = error.localizedDescription
+#if DEBUG
+            print("원격 마켓 다음 페이지 로드 실패: \(error.localizedDescription)")
 #endif
         }
     }

@@ -3,7 +3,18 @@ import Supabase
 import SwiftData
 
 protocol MarketListingRepository: Sendable {
-    func fetchListings(limit: Int) async throws -> [MarketListingSnapshot]
+    func fetchPage(before cursor: MarketListingCursor?, limit: Int) async throws -> MarketListingPage
+}
+
+struct MarketListingCursor: Equatable, Sendable {
+    let createdAt: Date
+    let id: UUID
+}
+
+struct MarketListingPage: Sendable {
+    let listings: [MarketListingSnapshot]
+    let nextCursor: MarketListingCursor?
+    let hasMore: Bool
 }
 
 struct MarketListingSnapshot: Identifiable, Sendable {
@@ -45,6 +56,13 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
     private let bucket = "market-media"
 
     func fetchListings(limit: Int = 30) async throws -> [MarketListingSnapshot] {
+        try await fetchPage(before: nil, limit: limit).listings
+    }
+
+    func fetchPage(
+        before cursor: MarketListingCursor? = nil,
+        limit: Int = 15
+    ) async throws -> MarketListingPage {
         guard let client = SupabaseService.client else {
             throw SupabaseServiceError.missingConfiguration
         }
@@ -52,7 +70,7 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
         let currentUserID = try await SupabaseSessionManager.shared.authenticatedUserID()
         let blockedUserIDs = try await SupabaseContentSafetyRepository.shared.fetchBlockedUserIDs()
         let safeLimit = min(max(limit, 1), 100)
-        let records: [RemoteMarketListingRecord] = try await client
+        var query = client
             .from("market_listings")
             .select(
                 """
@@ -81,14 +99,31 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
                 """
             )
             .in("status", values: ["active", "reserved", "sold"])
+
+        if let cursor {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let timestamp = formatter.string(from: cursor.createdAt)
+            query = query.or(
+                "created_at.lt.\(timestamp),and(created_at.eq.\(timestamp),id.lt.\(cursor.id.uuidString))"
+            )
+        }
+
+        let records: [RemoteMarketListingRecord] = try await query
             .order("created_at", ascending: false)
             .order("id", ascending: false)
-            .limit(safeLimit)
+            .limit(safeLimit + 1)
             .execute()
             .value
-
-        let visibleRecords = records.filter { !blockedUserIDs.contains($0.sellerID) }
-        guard !visibleRecords.isEmpty else { return [] }
+        let pageRecords = Array(records.prefix(safeLimit))
+        let visibleRecords = pageRecords.filter { !blockedUserIDs.contains($0.sellerID) }
+        let hasMore = records.count > safeLimit
+        let nextCursor = hasMore ? pageRecords.last.map {
+            MarketListingCursor(createdAt: $0.createdAt, id: $0.id)
+        } : nil
+        guard !visibleRecords.isEmpty else {
+            return MarketListingPage(listings: [], nextCursor: nextCursor, hasMore: hasMore)
+        }
         let listingIDs = visibleRecords.map { $0.id.uuidString }
         let verifications: [RemoteMarketVerificationRecord] = try await client
             .from("market_listing_verifications")
@@ -150,7 +185,7 @@ actor SupabaseMarketListingRepository: MarketListingRepository {
             ))
         }
 
-        return snapshots
+        return MarketListingPage(listings: snapshots, nextCursor: nextCursor, hasMore: hasMore)
     }
 
     private func download(path: String?, using client: SupabaseClient) async -> Data? {
@@ -304,6 +339,30 @@ enum MarketListingCacheStore {
             modelContext.delete(cachedListing)
         }
 
+        try modelContext.save()
+    }
+
+    static func mergeRemotePage(
+        _ snapshots: [MarketListingSnapshot],
+        in modelContext: ModelContext
+    ) throws {
+        let cachedRemoteListings = try modelContext.fetch(
+            FetchDescriptor<MarketListing>(predicate: #Predicate { $0.isSyncedFromServer == true })
+        )
+        let cachedByID = Dictionary(uniqueKeysWithValues: cachedRemoteListings.map { ($0.id, $0) })
+        for snapshot in snapshots {
+            if let cached = cachedByID[snapshot.id] {
+                cached.applyServerSnapshot(snapshot)
+            } else {
+                let listing = MarketListing(
+                    id: snapshot.id, sellerName: snapshot.sellerName, title: snapshot.title,
+                    detailText: snapshot.detailText, price: snapshot.price,
+                    isSyncedFromServer: true, serverSellerID: snapshot.sellerID
+                )
+                listing.applyServerSnapshot(snapshot)
+                modelContext.insert(listing)
+            }
+        }
         try modelContext.save()
     }
 }

@@ -723,6 +723,45 @@ struct OutfitFlowTests {
         #expect(!remote.isOwnedByCurrentUser)
     }
 
+    @Test("마켓 다음 페이지는 기존 원격·로컬 매물을 보존하고 중복을 갱신한다")
+    @MainActor
+    func remoteMarketCacheMergesAdditionalPages() throws {
+        let container = try AppModelContainerFactory.make(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let local = MarketListing(sellerName: "나", title: "로컬", detailText: "", price: 1_000)
+        let existingID = UUID()
+        let existing = MarketListing(id: existingID, sellerName: "서버", title: "기존",
+                                     detailText: "", price: 2_000, isSyncedFromServer: true,
+                                     serverSellerID: UUID())
+        context.insert(local)
+        context.insert(existing)
+        try context.save()
+
+        let nextID = UUID()
+        try MarketListingCacheStore.mergeRemotePage([
+            marketSnapshot(id: existingID, title: "갱신", price: 2_500),
+            marketSnapshot(id: nextID, title: "다음 페이지", price: 3_000)
+        ], in: context)
+        try MarketListingCacheStore.mergeRemotePage([
+            marketSnapshot(id: nextID, title: "다음 페이지", price: 3_000)
+        ], in: context)
+
+        let listings = try context.fetch(FetchDescriptor<MarketListing>())
+        #expect(listings.count == 3)
+        #expect(listings.contains { $0.id == local.id && $0.isSyncedFromServer != true })
+        #expect(listings.first { $0.id == existingID }?.title == "갱신")
+        #expect(listings.filter { $0.id == nextID }.count == 1)
+    }
+
+    @Test("마켓 커서는 같은 시간 매물을 ID로 안정적으로 구분한다")
+    func marketCursorIncludesTimestampAndID() {
+        let time = Date(timeIntervalSince1970: 100)
+        let first = MarketListingCursor(createdAt: time, id: UUID())
+        let second = MarketListingCursor(createdAt: time, id: UUID())
+        #expect(first != second)
+        #expect(MarketListingCursor(createdAt: time, id: first.id) == first)
+    }
+
     @Test("정리 추천은 기준일보다 오래된 활성 옷만 포함한다")
     func reviewCandidatesRespectStatusAndThreshold() {
         let now = Date(timeIntervalSince1970: 2_000_000_000)
@@ -1047,4 +1086,20 @@ private func solidImageData(red: CGFloat, green: CGFloat, blue: CGFloat) -> Data
         UIColor.white.setFill()
         context.fill(CGRect(x: 110, y: 150, width: 260, height: 340))
     }.pngData()
+}
+
+private func marketSnapshot(id: UUID, title: String, price: Int) -> MarketListingSnapshot {
+    MarketListingSnapshot(
+        id: id, sellerID: UUID(), sellerName: "원격 판매자", title: title,
+        detailText: "상세", price: price, previousPrice: nil, size: "M",
+        condition: .good, status: .active, createdAt: .now, isLiked: false,
+        accentHex: "C7F25B", meetingPlace: nil, meetingAddress: nil,
+        meetingLatitude: nil, meetingLongitude: nil, chatCount: 0,
+        galleryImages: [], showsWardrobeVerification: false, sourceGarmentID: nil,
+        garmentNameSnapshot: nil, garmentBrandSnapshot: nil,
+        garmentCategoryRawSnapshot: nil, garmentColorHexSnapshot: nil,
+        garmentCutoutImageDataSnapshot: nil, verificationPurchasePrice: nil,
+        verificationLastWornAt: nil, verificationWearCount: nil,
+        isOwnedByCurrentUser: false
+    )
 }
