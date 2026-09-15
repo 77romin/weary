@@ -5,7 +5,6 @@ struct AccountProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var authentication: AuthenticationStore
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @Query private var communityPosts: [CommunityPost]
     @Query private var marketListings: [MarketListing]
     @State private var handle = ""
@@ -85,7 +84,6 @@ struct AccountProfileView: View {
             .sheet(isPresented: $showingAccountDeletion) {
                 AccountDeletionConfirmationView {
                     try clearLocalData()
-                    hasCompletedOnboarding = false
                 }
                 .environmentObject(authentication)
             }

@@ -108,13 +108,15 @@ private struct AppEntryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var authentication: AuthenticationStore
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("showsOnboardingReplay") private var showsOnboardingReplay = false
     @State private var didCompleteForcedOnboarding = false
+    @State private var didCompleteSignedOutOnboarding = false
     @State private var isPreparingApp = true
 
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
     private let forcesAuthentication = ProcessInfo.processInfo.arguments.contains("-ui-testing-authentication")
     private let forcesOnboarding = ProcessInfo.processInfo.arguments.contains("-ui-testing-onboarding")
+    private let simulatesSignedOut = ProcessInfo.processInfo.arguments.contains("-ui-testing-signed-out")
 
     var body: some View {
         Group {
@@ -122,10 +124,11 @@ private struct AppEntryView: View {
                 StartupLoadingView()
             } else if shouldShowOnboarding {
                 OnboardingView {
-                    hasCompletedOnboarding = true
+                    showsOnboardingReplay = false
                     didCompleteForcedOnboarding = true
+                    didCompleteSignedOutOnboarding = true
                 }
-            } else if forcesAuthentication {
+            } else if forcesAuthentication || simulatesSignedOut {
                 AuthenticationView()
             } else if isUITesting {
                 RootTabView()
@@ -164,6 +167,11 @@ private struct AppEntryView: View {
             guard newPhase == .active else { return }
             Task { await authentication.refreshAccountSanction() }
         }
+        .onChange(of: isSignedIn) { wasSignedIn, signedIn in
+            if wasSignedIn && !signedIn {
+                didCompleteSignedOutOnboarding = false
+            }
+        }
         .sheet(isPresented: $authentication.requiresPasswordUpdate) {
             PasswordUpdateView()
         }
@@ -179,7 +187,18 @@ private struct AppEntryView: View {
 
     private var shouldShowOnboarding: Bool {
         if forcesOnboarding { return !didCompleteForcedOnboarding }
-        return !isUITesting && !hasCompletedOnboarding
+        if simulatesSignedOut { return !didCompleteSignedOutOnboarding }
+        if isUITesting || forcesAuthentication { return false }
+        if case .signedOut = authentication.phase {
+            return !didCompleteSignedOutOnboarding
+        }
+        guard isSignedIn else { return false }
+        return showsOnboardingReplay
+    }
+
+    private var isSignedIn: Bool {
+        if case .signedIn = authentication.phase { return true }
+        return false
     }
 }
 

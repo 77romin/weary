@@ -4,7 +4,7 @@ import SwiftUI
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var authentication: AuthenticationStore
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage("showsOnboardingReplay") private var showsOnboardingReplay = false
     @AppStorage(SocialContentMode.storageKey) private var contentModeRaw = SocialContentMode.live.rawValue
     @Query private var garments: [Garment]
     @Query(filter: #Predicate<Outfit> { $0.isConfirmed }) private var outfits: [Outfit]
@@ -161,7 +161,7 @@ struct ProfileView: View {
                             .accessibilityIdentifier("profile.resetDemo")
 
                             Button {
-                                hasCompletedOnboarding = false
+                                showsOnboardingReplay = true
                             } label: {
                                 Label("앱 안내 다시 보기", systemImage: "questionmark.circle")
                             }

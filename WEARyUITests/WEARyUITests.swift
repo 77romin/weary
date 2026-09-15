@@ -289,7 +289,7 @@ final class WEARyUITests: XCTestCase {
     func testFirstLaunchShowsOnboardingBeforeLogin() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-testing", "-ui-testing-onboarding", "-ui-testing-authentication"]
+        app.launchArguments = ["-ui-testing", "-ui-testing-signed-out"]
         app.launch()
 
         XCTAssertTrue(app.buttons["onboarding.next"].waitForExistence(timeout: 3))
@@ -299,6 +299,10 @@ final class WEARyUITests: XCTestCase {
         XCTAssertEqual(app.buttons["onboarding.start"].label, "!WEARy 시작하기")
         app.buttons["onboarding.start"].tap()
         XCTAssertTrue(app.otherElements["auth.login"].waitForExistence(timeout: 3))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["onboarding.next"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.otherElements["auth.login"].exists)
     }
 
     func testAccessibilityTextSizeKeepsCoreNavigationUsable() throws {
