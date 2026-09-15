@@ -25,6 +25,7 @@ struct CaptureView: View {
     @State private var showingGarmentPicker = false
     @State private var showingNewGarment = false
     @State private var publishToFeed = false
+    @State private var publicationConsent = PublicPhotoPublicationConsent()
     @State private var postCaption = "오늘의 WEARy"
     @State private var publishFailureMessage: String?
 
@@ -269,11 +270,19 @@ struct CaptureView: View {
                         .font(.subheadline.weight(.bold))
                         .tint(WEARyTheme.lime)
                         .lightTextOutline()
+                        .accessibilityIdentifier("capture.publishToFeed")
+                        .onChange(of: publishToFeed) { _, isPublishing in
+                            if !isPublishing { publicationConsent.reset() }
+                        }
                     if publishToFeed {
                         TextField("오늘의 룩을 소개해 주세요", text: $postCaption, axis: .vertical)
                             .lightTextOutline()
                             .padding(12)
                             .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+
+                        PublicPhotoConsentSection(consent: $publicationConsent)
+                            .tint(WEARyTheme.lime)
+                            .foregroundStyle(.white)
                     }
                     Text("개인 착장 기록은 기본적으로 나만 볼 수 있어요.")
                         .font(.caption).foregroundStyle(.white.opacity(0.55))
@@ -287,8 +296,8 @@ struct CaptureView: View {
                         .primaryCaptureButtonStyle()
                 }
                 .accessibilityIdentifier("capture.save")
-                .disabled(selectedGarmentIDs.isEmpty)
-                .opacity(selectedGarmentIDs.isEmpty ? 0.45 : 1)
+                .disabled(!canSaveOutfit)
+                .opacity(canSaveOutfit ? 1 : 0.45)
             }
             .padding(18).padding(.bottom, 24)
         }
@@ -424,8 +433,16 @@ struct CaptureView: View {
         OutfitSelection.uniqueGarmentIDs(in: groups)
     }
 
+    private var canSaveOutfit: Bool {
+        !selectedGarmentIDs.isEmpty
+            && PublicPhotoConsentPolicy.permitsSaving(
+                publishesToFeed: publishToFeed,
+                consent: publicationConsent
+            )
+    }
+
     private func saveOutfit() {
-        guard case .review = phase, !selectedGarmentIDs.isEmpty else { return }
+        guard case .review = phase, canSaveOutfit else { return }
         publishFailureMessage = nil
         let visionGroups = groups.filter { $0.source == .vision }
         let outfit = Outfit(
@@ -569,6 +586,7 @@ struct CaptureView: View {
         groups = []
         editingGroupID = nil
         publishToFeed = false
+        publicationConsent.reset()
         postCaption = "오늘의 WEARy"
         publishFailureMessage = nil
         phase = .ready

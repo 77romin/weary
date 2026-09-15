@@ -455,6 +455,7 @@ private struct CreateCommunityPostView: View {
     @State private var tagsText = "오늘의룩"
     @State private var orderedItemIDs: [UUID] = []
     @State private var itemEditMode: EditMode = .active
+    @State private var publicationConsent = PublicPhotoPublicationConsent()
     @State private var isPublishing = false
     @State private var publishError: String?
 
@@ -530,9 +531,9 @@ private struct CreateCommunityPostView: View {
                 }
 
                 Section {
-                    Text("선택한 착장 사진과 옷 정보만 커뮤니티 서버에 공개됩니다. 구매 가격과 비공개 옷장 정보는 업로드하지 않아요.")
-                        .font(.caption)
-                        .foregroundStyle(WEARyTheme.secondaryInk)
+                    PublicPhotoConsentSection(consent: $publicationConsent)
+                } footer: {
+                    Text("선택한 착장 사진과 옷 정보만 공개합니다. 구매 가격과 비공개 옷장 정보는 업로드하지 않아요.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -557,6 +558,7 @@ private struct CreateCommunityPostView: View {
                             isPublishing
                                 || selectedOutfit == nil
                                 || caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || !publicationConsent.isComplete
                         )
                         .accessibilityIdentifier("feed.publish")
                 }
@@ -582,7 +584,9 @@ private struct CreateCommunityPostView: View {
     }
 
     private func publish() {
-        guard let selectedOutfit, let photoData = selectedOutfit.photoData else { return }
+        guard publicationConsent.isComplete,
+              let selectedOutfit,
+              let photoData = selectedOutfit.photoData else { return }
         let tags = tagsText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "") }

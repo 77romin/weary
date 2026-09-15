@@ -66,6 +66,32 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["나의 착장 캘린더"].exists)
     }
 
+    func testCapturePublicPostRequiresPhotoConsent() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["기록"].tap()
+        XCTAssertTrue(app.buttons["capture.sample"].waitForExistence(timeout: 3))
+        app.buttons["capture.sample"].tap()
+        XCTAssertTrue(app.buttons["capture.analyze"].waitForExistence(timeout: 2))
+        app.buttons["capture.analyze"].tap()
+
+        let saveButton = app.buttons["capture.save"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.switches["capture.publishToFeed"].exists)
+        app.switches["capture.publishToFeed"].tap()
+        XCTAssertFalse(saveButton.isEnabled)
+
+        for _ in 0..<5 where !app.switches["photoConsent.publicUpload"].exists { app.swipeUp() }
+        let uploadConsent = app.switches["photoConsent.publicUpload"]
+        let rightsConsent = app.switches["photoConsent.publicationRights"]
+        XCTAssertTrue(uploadConsent.waitForExistence(timeout: 2))
+        XCTAssertTrue(rightsConsent.exists)
+        uploadConsent.tap()
+        XCTAssertFalse(saveButton.isEnabled)
+        rightsConsent.tap()
+        XCTAssertTrue(saveButton.isEnabled)
+    }
+
     func testMyAccountProvidesSanctionAndAppealHistory() throws {
         continueAfterFailure = false
         let app = launchApp()
@@ -212,6 +238,10 @@ final class WEARyUITests: XCTestCase {
         app.buttons["feed.compose"].tap()
         XCTAssertTrue(app.navigationBars["피드 작성"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["feed.publish"].exists)
+        for _ in 0..<5 where !app.switches["photoConsent.publicUpload"].exists { app.swipeUp() }
+        XCTAssertTrue(app.switches["photoConsent.publicUpload"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.switches["photoConsent.publicationRights"].exists)
+        XCTAssertFalse(app.buttons["feed.publish"].isEnabled)
         app.buttons["취소"].tap()
 
         app.buttons["feed.topic.빈티지"].tap()

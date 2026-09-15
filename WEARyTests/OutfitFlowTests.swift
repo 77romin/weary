@@ -7,6 +7,23 @@ import UIKit
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("공개 사진 게시에는 매번 업로드 인지와 게시 권한 확인이 모두 필요하다")
+    func publicPhotoConsentRequiresBothConfirmations() {
+        var consent = PublicPhotoPublicationConsent()
+
+        #expect(PublicPhotoConsentPolicy.permitsSaving(publishesToFeed: false, consent: consent))
+        #expect(!PublicPhotoConsentPolicy.permitsSaving(publishesToFeed: true, consent: consent))
+
+        consent.acknowledgesPublicUpload = true
+        #expect(!PublicPhotoConsentPolicy.permitsSaving(publishesToFeed: true, consent: consent))
+
+        consent.confirmsPublicationRights = true
+        #expect(PublicPhotoConsentPolicy.permitsSaving(publishesToFeed: true, consent: consent))
+
+        consent.reset()
+        #expect(!consent.isComplete)
+    }
+
     @Test("소셜 데이터 모드는 실서버와 데모를 명확히 구분한다")
     func socialContentModesAreDistinct() {
         #expect(SocialContentMode.live.title == "실서버")

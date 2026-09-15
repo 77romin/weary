@@ -99,6 +99,17 @@ xcodebuild -quiet -project WEARy.xcodeproj -scheme WEARy \
 - 마켓 핵심 UI 대상 재실행 통과: `/tmp/weary-market-pagination/Logs/Test/Test-WEARy-2026.09.15_23-47-29-+0900.xcresult` — 1개 통과, 실패 0개.
 - 실기기용 Debug 빌드 성공. 원격 DB에 16개 이상의 테스트 매물을 생성하는 실서버 페이지 왕복은 이번 단계에서 수행하지 않았다.
 
+## 공개 착장 사진 게시 확인 — 2026-09-16
+
+- 개인 착장 기록은 기존처럼 추가 확인 없이 저장하고, 피드 공개를 선택한 경우에만 게시 확인을 요구한다.
+- 피드 작성과 기록 중 공개 게시 모두 서버 업로드 인지와 사진 게시 권한·사진 속 타인 동의를 매 게시마다 확인해야 한다.
+- 공개 선택을 끄면 확인 상태를 초기화하고, UI 비활성화와 게시 함수의 이중 가드로 확인 전 게시를 막는다.
+- 이 기능은 제품 수준의 사전 확인이며 개인정보 보존·파기·철회와 초상권에 관한 법률·운영 정책 검토를 대체하지 않는다.
+- 단위 결과: `/tmp/weary-public-photo-consent/Logs/Test/Test-WEARy-2026.09.16_00-24-22-+0900.xcresult` — Xcode 61개 통과·실패 0개. 로컬 규칙 테스트 46개와 서버 작업 없이 반환한 선택형 통합 테스트 15개를 합친 값이다.
+- 피드 작성 대상 UI 결과: `/tmp/weary-public-photo-consent/Logs/Test/Test-WEARy-2026.09.16_00-27-21-+0900.xcresult` — 1개 통과·실패 0개.
+- 기록 중 공개 대상 UI 결과: `/tmp/weary-public-photo-consent/Logs/Test/Test-WEARy-2026.09.16_00-29-12-+0900.xcresult` — 1개 통과·실패 0개. 공개 선택 후 두 확인이 모두 끝나기 전까지 저장 버튼이 비활성화되는 흐름을 검증했다.
+- 코드서명 없이 generic iPhone용 Debug 빌드도 성공했다. 최초 시도는 샌드박스의 GitHub DNS 제한으로 패키지를 받지 못했고, 네트워크 접근이 가능한 동일 명령 재실행에서 통과했다.
+
 ## Release 재빌드
 
 ```bash

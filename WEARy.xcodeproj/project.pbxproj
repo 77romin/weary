@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		067C09C6F577FF2296A212CF /* WardrobeInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EABE584631562BA3546A6F4 /* WardrobeInsightsView.swift */; };
 		09D84950D7E78B7EC77CEE07 /* ContentSafetyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEC42A518CE80781B97F7F7F /* ContentSafetyRepository.swift */; };
+		0C3174C9E7BE83D6CAD2868B /* PublicPhotoConsentSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02C6E407DBA89D3CA6EAA95E /* PublicPhotoConsentSection.swift */; };
 		17E4EB45CA9B68F0FC439FE8 /* MarketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34A3E80602847222DDA58904 /* MarketView.swift */; };
 		1B80746C4352690D940C43A5 /* GarmentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3C149F4F711AB873F2E153 /* GarmentDetailView.swift */; };
 		2445A6E30B5E4DB90863B9CC /* ModerationReportsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D92D420F6F2A37784C62FBD /* ModerationReportsView.swift */; };
@@ -79,6 +80,7 @@
 
 /* Begin PBXFileReference section */
 		01F4B5A747A653FF2CD15627 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
+		02C6E407DBA89D3CA6EAA95E /* PublicPhotoConsentSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicPhotoConsentSection.swift; sourceTree = "<group>"; };
 		0BBA0D4D242C9ACFF3DD4A1C /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
 		1E462FCBDF9E3E12E9D3C2F0 /* UserNoticeRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserNoticeRepository.swift; sourceTree = "<group>"; };
 		20FFF7D199540E2CA4FC1466 /* AccountDeletionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionRepository.swift; sourceTree = "<group>"; };
@@ -186,6 +188,7 @@
 			children = (
 				24C239F4DDCA583C5A5F1776 /* CameraPicker.swift */,
 				3F8201B35CDC2D7F227B435F /* GarmentArtwork.swift */,
+				02C6E407DBA89D3CA6EAA95E /* PublicPhotoConsentSection.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -558,6 +561,7 @@
 				33AE3F931E5E5C770142C893 /* OutfitAnalyzing.swift in Sources */,
 				5BA98BB92C99AB431A3E1FE4 /* OutfitRecordService.swift in Sources */,
 				D7E11045D5E679DA98366A3B /* ProfileView.swift in Sources */,
+				0C3174C9E7BE83D6CAD2868B /* PublicPhotoConsentSection.swift in Sources */,
 				F9E583AF2461FC6F15B553A4 /* RootTabView.swift in Sources */,
 				330F17106A6BC2C300502282 /* SampleDataSeeder.swift in Sources */,
 				3CAC64E8405D40AD9815E64E /* SupabaseService.swift in Sources */,
@@ -623,7 +627,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.weary.prototype;
 				PRODUCT_NAME = WEARy;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLOUDKIT_ENABLED";
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = CloudKitDebug;
