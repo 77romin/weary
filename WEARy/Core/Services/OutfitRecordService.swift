@@ -13,6 +13,45 @@ enum OutfitRecordError: LocalizedError {
 }
 
 @MainActor
+enum ServiceCacheBoundary {
+    static func clearRemoteCache(in context: ModelContext) throws {
+        let posts = try context.fetch(FetchDescriptor<CommunityPost>())
+        let listings = try context.fetch(FetchDescriptor<MarketListing>())
+        posts.filter { $0.isSyncedFromServer == true }.forEach(context.delete)
+        listings.filter { $0.isSyncedFromServer == true }.forEach(context.delete)
+        try context.save()
+    }
+}
+
+@MainActor
+struct GarmentMutationBackup {
+    private let restoreOperation: () -> Void
+
+    init(_ garment: Garment) {
+        let original = (
+            garment.name, garment.brand, garment.category, garment.colorName,
+            garment.purchaseDate, garment.purchasePrice, garment.size, garment.season,
+            garment.status, garment.imageData, garment.cutoutImageData
+        )
+        restoreOperation = {
+            garment.name = original.0
+            garment.brand = original.1
+            garment.category = original.2
+            garment.colorName = original.3
+            garment.purchaseDate = original.4
+            garment.purchasePrice = original.5
+            garment.size = original.6
+            garment.season = original.7
+            garment.status = original.8
+            garment.imageData = original.9
+            garment.cutoutImageData = original.10
+        }
+    }
+
+    func restore() { restoreOperation() }
+}
+
+@MainActor
 enum OutfitRecordService {
     static func update(
         _ outfit: Outfit,

@@ -112,6 +112,9 @@ private struct AppEntryView: View {
     @State private var didCompleteForcedOnboarding = false
     @State private var didCompleteSignedOutOnboarding = false
     @State private var isPreparingApp = true
+    @AppStorage("serviceCacheOwnerID") private var serviceCacheOwnerID = ""
+    @State private var readyCacheUserID: UUID?
+    @State private var cachePreparationError: String?
 
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
     private let forcesAuthentication = ProcessInfo.processInfo.arguments.contains("-ui-testing-authentication")
@@ -139,7 +142,19 @@ private struct AppEntryView: View {
                 case .signedOut:
                     AuthenticationView()
                 case .signedIn:
-                    RootTabView()
+                    if let userID = authentication.userID, readyCacheUserID == userID {
+                        RootTabView().id(userID)
+                    } else if let cachePreparationError {
+                        ContentUnavailableView {
+                            Label("계정 데이터를 준비하지 못했어요", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(cachePreparationError)
+                        } actions: {
+                            Button("다시 시도") { prepareServiceCache() }
+                        }
+                    } else {
+                        StartupLoadingView()
+                    }
                 }
             }
         }
@@ -162,6 +177,9 @@ private struct AppEntryView: View {
         }
         .onOpenURL { url in
             Task { await authentication.handleIncomingURL(url) }
+        }
+        .task(id: authentication.userID) {
+            prepareServiceCache()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -194,6 +212,21 @@ private struct AppEntryView: View {
         }
         guard isSignedIn else { return false }
         return showsOnboardingReplay
+    }
+
+    private func prepareServiceCache() {
+        readyCacheUserID = nil
+        cachePreparationError = nil
+        guard let userID = authentication.userID else { return }
+        do {
+            if serviceCacheOwnerID != userID.uuidString {
+                try ServiceCacheBoundary.clearRemoteCache(in: modelContext)
+                serviceCacheOwnerID = userID.uuidString
+            }
+            readyCacheUserID = userID
+        } catch {
+            cachePreparationError = "이전 계정의 캐시를 정리하지 못했어요. 다시 시도해 주세요."
+        }
     }
 
     private var isSignedIn: Bool {

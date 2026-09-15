@@ -27,6 +27,7 @@ struct GarmentEditorView: View {
     @State private var status: GarmentStatus
     @State private var hasPurchaseDate: Bool
     @State private var saveError: String?
+    @State private var isSaving = false
 
     init(garment: Garment? = nil) {
         self.garment = garment
@@ -166,7 +167,7 @@ struct GarmentEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("저장", action: save)
                         .fontWeight(.bold)
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGeneratingCutout)
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGeneratingCutout || isSaving)
                 }
             }
             .onChange(of: selectedPhoto) { _, item in
@@ -207,10 +208,16 @@ struct GarmentEditorView: View {
     }
 
     private func save() {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let parsedPrice = Int(purchasePrice.replacingOccurrences(of: ",", with: ""))
+        var undoChanges: () -> Void = {}
 
         if let garment {
+            let backup = GarmentMutationBackup(garment)
+            undoChanges = backup.restore
             garment.name = trimmedName
             garment.brand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
             garment.category = category
@@ -237,12 +244,14 @@ struct GarmentEditorView: View {
                 cutoutImageData: cutoutImageData
             )
             modelContext.insert(newGarment)
+            undoChanges = { modelContext.delete(newGarment) }
         }
 
         do {
             try modelContext.save()
             dismiss()
         } catch {
+            undoChanges()
             saveError = "저장하지 못했어요. 다시 시도해 주세요."
         }
     }

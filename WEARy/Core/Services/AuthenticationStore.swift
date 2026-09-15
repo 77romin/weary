@@ -198,6 +198,7 @@ final class AuthenticationStore: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .loading
+    @Published private(set) var userID: UUID?
     @Published private(set) var profile: AccountProfile?
     @Published private(set) var email: String?
     @Published private(set) var isPasswordAccount = false
@@ -239,7 +240,6 @@ final class AuthenticationStore: ObservableObject {
     func signIn(identifier: String, password: String) async throws {
         let client = try configuredClient()
         try await discardAnonymousSession(using: client)
-        phase = .loading
         let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         do {
             let session: Session
@@ -294,7 +294,6 @@ final class AuthenticationStore: ObservableObject {
     func signUp(email: String, password: String, handle: String, nickname: String) async throws -> SignUpResult {
         let client = try configuredClient()
         try await discardAnonymousSession(using: client)
-        phase = .loading
 
         let normalizedHandle = handle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let normalizedNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -326,7 +325,6 @@ final class AuthenticationStore: ObservableObject {
     func signInWithOAuth(_ provider: Provider) async throws {
         let client = try configuredClient()
         try await discardAnonymousSession(using: client)
-        phase = .loading
         do {
             let session = try await client.auth.signInWithOAuth(
                 provider: provider,
@@ -480,16 +478,21 @@ final class AuthenticationStore: ObservableObject {
     }
 
     private func activate(_ session: Session) async {
+        let fetchedProfile = try? await AccountProfileRepository.shared.fetch(userID: session.user.id)
+        guard SupabaseService.client?.auth.currentUser?.id == session.user.id else { return }
         email = session.user.email
         isPasswordAccount = session.user.identities?.contains { $0.provider == "email" } == true
         await SupabaseSessionManager.shared.update(userID: session.user.id)
-        profile = try? await AccountProfileRepository.shared.fetch(userID: session.user.id)
+        profile = fetchedProfile
         activeAccountSanction = nil
         await refreshAccountSanction()
+        guard SupabaseService.client?.auth.currentUser?.id == session.user.id else { return }
+        userID = session.user.id
         phase = .signedIn
     }
 
     private func clearSession() async {
+        userID = nil
         email = nil
         profile = nil
         isPasswordAccount = false

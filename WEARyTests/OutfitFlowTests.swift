@@ -807,6 +807,57 @@ struct OutfitFlowTests {
             }
         }
     }
+
+    @Test("계정 변경 캐시 정리는 개인 데이터와 데모를 보존한다")
+    @MainActor
+    func clearingRemoteCachePreservesPersonalDataAndDemo() throws {
+        let container = try AppModelContainerFactory.make(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let garment = Garment(name: "내 셔츠", category: .top, colorName: "화이트", colorHex: "FFFFFF")
+        let outfit = Outfit(wornAt: .now)
+        context.insert(garment)
+        context.insert(outfit)
+        let remotePost = CommunityPost(authorName: "이전 계정", authorHandle: "old", authorInitials: "O", caption: "원격")
+        remotePost.isSyncedFromServer = true
+        context.insert(remotePost)
+        context.insert(CommunityPost(authorName: "데모", authorHandle: "demo", authorInitials: "D", caption: "샘플"))
+        context.insert(MarketListing(sellerName: "이전 계정", title: "원격", detailText: "", price: 1000, isSyncedFromServer: true))
+        context.insert(MarketListing(sellerName: "데모", title: "샘플", detailText: "", price: 2000))
+        try context.save()
+
+        try ServiceCacheBoundary.clearRemoteCache(in: context)
+        try ServiceCacheBoundary.clearRemoteCache(in: context)
+
+        #expect(try context.fetchCount(FetchDescriptor<Garment>()) == 1)
+        #expect(try context.fetchCount(FetchDescriptor<Outfit>()) == 1)
+        let posts = try context.fetch(FetchDescriptor<CommunityPost>())
+        #expect(posts.count == 1)
+        #expect(posts.first?.authorHandle == "demo")
+        let listings = try context.fetch(FetchDescriptor<MarketListing>())
+        #expect(listings.count == 1)
+        #expect(listings.first?.title == "샘플")
+    }
+
+    @Test("옷 저장 실패 복원은 기존 구매 정보와 사진을 유지한다")
+    @MainActor
+    func garmentMutationBackupRestoresOriginalValues() {
+        let image = Data([1, 2, 3])
+        let garment = Garment(name: "원래 이름", brand: "브랜드", category: .top,
+                              colorName: "화이트", colorHex: "FFFFFF", purchasePrice: 45000,
+                              size: "M", imageData: image, cutoutImageData: image)
+        let backup = GarmentMutationBackup(garment)
+        garment.name = "수정 이름"
+        garment.category = .bottom
+        garment.purchasePrice = nil
+        garment.imageData = nil
+        garment.cutoutImageData = nil
+        backup.restore()
+        #expect(garment.name == "원래 이름")
+        #expect(garment.category == .top)
+        #expect(garment.purchasePrice == 45000)
+        #expect(garment.imageData == image)
+        #expect(garment.cutoutImageData == image)
+    }
 }
 
 private func solidImageData(red: CGFloat, green: CGFloat, blue: CGFloat) -> Data? {

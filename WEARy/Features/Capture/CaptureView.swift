@@ -425,6 +425,7 @@ struct CaptureView: View {
     }
 
     private func saveOutfit() {
+        guard case .review = phase, !selectedGarmentIDs.isEmpty else { return }
         publishFailureMessage = nil
         let visionGroups = groups.filter { $0.source == .vision }
         let outfit = Outfit(
@@ -713,11 +714,11 @@ private struct MatchGroupCard: View {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(WEARyTheme.lime)
                 }
             } else {
-                Text("이 카테고리는 기록에서 제외했어요.")
+                Text("아직 선택한 옷이 없어요. 후보를 선택하거나 제외하세요.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.58))
                     .lightTextOutline()
             }
-            if candidates.count > 1 {
+            if !candidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(candidates) { garment in

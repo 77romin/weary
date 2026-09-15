@@ -190,6 +190,9 @@ struct AccountProfileView: View {
 
     @MainActor
     private func load() async {
+        // Demo UI tests have no authenticated service session.
+        // Keep their navigation checks independent of network/profile errors.
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing") { return }
         do {
             isModerator = (try? await SupabaseModerationRepository.shared.isCurrentUserModerator()) ?? false
             if authentication.profile == nil { try await authentication.refreshProfile() }
