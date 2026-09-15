@@ -457,6 +457,88 @@ enum VisionCacheBenchmark {
     }
 }
 
+struct OutfitEvaluationScore: Codable, Sendable {
+    let garmentID: UUID
+    let category: String
+    let candidateIDs: [UUID]
+    let usedVision: Bool
+    var topOneHit: Bool { usedVision && candidateIDs.first == garmentID }
+    var topThreeHit: Bool { usedVision && candidateIDs.prefix(3).contains(garmentID) }
+}
+
+struct OutfitEvaluationResult: Identifiable, Codable, Sendable {
+    let id: UUID
+    let evaluatedAt: Date
+    let analyzerVersion: String
+    let scores: [OutfitEvaluationScore]
+    var topOneHits: Int { scores.filter(\.topOneHit).count }
+    var topThreeHits: Int { scores.filter(\.topThreeHit).count }
+    var visionCoveredCount: Int { scores.filter(\.usedVision).count }
+    var isValidVisionRun: Bool { visionCoveredCount > 0 }
+}
+
+enum OutfitEvaluationError: LocalizedError {
+    case missingGroundTruth, unknownGroundTruth
+    var errorDescription: String? {
+        switch self {
+        case .missingGroundTruth: "사진에 실제로 입은 옷을 한 개 이상 지정해 주세요."
+        case .unknownGroundTruth: "정답 옷이 옷장에 없어요. 옷 목록을 다시 확인해 주세요."
+        }
+    }
+}
+
+enum OutfitEvaluation {
+    nonisolated static func evaluate(
+        groundTruthIDs: Set<UUID>, wardrobe: [GarmentSnapshot], groups: [DetectedGarmentGroup]
+    ) throws -> OutfitEvaluationResult {
+        guard !groundTruthIDs.isEmpty else { throw OutfitEvaluationError.missingGroundTruth }
+        guard groundTruthIDs.isSubset(of: Set(wardrobe.map(\.id))) else {
+            throw OutfitEvaluationError.unknownGroundTruth
+        }
+        let scores = groundTruthIDs.sorted { $0.uuidString < $1.uuidString }.map { id in
+            let category = wardrobe.first { $0.id == id }!.category
+            let group = groups.first { $0.category == category && $0.source == .vision }
+            let allowedIDs = Set(wardrobe.filter { $0.category == category }.map(\.id))
+            var seen = Set<UUID>()
+            let candidates = group?.candidateIDs.filter { allowedIDs.contains($0) && seen.insert($0).inserted } ?? []
+            return OutfitEvaluationScore(garmentID: id, category: category.rawValue,
+                                         candidateIDs: Array(candidates.prefix(3)), usedVision: group != nil)
+        }
+        return OutfitEvaluationResult(id: UUID(), evaluatedAt: .now,
+            analyzerVersion: "Vision-featureprint-\(VNGenerateImageFeaturePrintRequest.defaultRevision)-crop-v1-top3",
+            scores: scores)
+    }
+}
+
+@MainActor
+final class OutfitEvaluationSession: ObservableObject {
+    static let shared = OutfitEvaluationSession()
+    @Published private(set) var results: [OutfitEvaluationResult] = []
+    private var photoResultIDs: [String: UUID] = [:]
+    var truthCount: Int { results.reduce(0) { $0 + $1.scores.count } }
+    var topOneHits: Int { results.reduce(0) { $0 + $1.topOneHits } }
+    var topThreeHits: Int { results.reduce(0) { $0 + $1.topThreeHits } }
+
+    func append(_ result: OutfitEvaluationResult, photoKey: String? = nil) {
+        guard result.isValidVisionRun, !results.contains(where: { $0.id == result.id }) else { return }
+        if let photoKey, let previousID = photoResultIDs[photoKey] {
+            results.removeAll { $0.id == previousID }
+        }
+        results.append(result)
+        if let photoKey { photoResultIDs[photoKey] = result.id }
+        if results.count > 50 { results.removeFirst(results.count - 50) }
+        let retainedIDs = Set(results.map(\.id))
+        photoResultIDs = photoResultIDs.filter { retainedIDs.contains($0.value) }
+    }
+    func clear() { results.removeAll(); photoResultIDs.removeAll() }
+    var exportJSON: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return (try? String(data: encoder.encode(results), encoding: .utf8)) ?? "[]"
+    }
+}
+
 enum OutfitSelection {
     static func uniqueGarmentIDs(in groups: [DetectedGarmentGroup]) -> [UUID] {
         groups.compactMap(\.selectedGarmentID).reduce(into: []) { result, id in

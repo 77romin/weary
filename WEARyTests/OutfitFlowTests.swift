@@ -78,6 +78,8 @@ struct OutfitFlowTests {
         #expect(group.source == .vision || group.source == .ai)
 #else
         #expect(group.source == .vision)
+        let evaluation = try OutfitEvaluation.evaluate(groundTruthIDs: [garmentID], wardrobe: wardrobe, groups: result)
+        #expect(evaluation.topOneHits == 1 && evaluation.topThreeHits == 1)
         let benchmark = try await VisionCacheBenchmark.run(photoData: imageData, wardrobe: wardrobe)
         #expect(benchmark.cold.performance.generatedPrints == 1)
         #expect(benchmark.warm.count == 3)
@@ -165,6 +167,72 @@ struct OutfitFlowTests {
         } catch {
             Issue.record("예상하지 못한 오류: \(error)")
         }
+    }
+
+    @Test("정답 옷별 순위를 평가하되 Mock 후보는 적중으로 인정하지 않는다")
+    func evaluationCountsRanksWithoutScoringMock() throws {
+        let top = UUID(), alternative = UUID(), bottom = UUID()
+        let wardrobe = [GarmentSnapshot(id: top, category: .top, name: "정답 상의"),
+                        GarmentSnapshot(id: alternative, category: .top, name: "다른 상의"),
+                        GarmentSnapshot(id: bottom, category: .bottom, name: "정답 하의")]
+        let groups = [DetectedGarmentGroup(category: .top, candidateIDs: [alternative, top], selectedGarmentID: alternative,
+                                           confidence: .medium, source: .vision),
+                      DetectedGarmentGroup(category: .bottom, candidateIDs: [bottom], selectedGarmentID: bottom,
+                                           confidence: .high, source: .ai)]
+        let result = try OutfitEvaluation.evaluate(groundTruthIDs: [top, bottom], wardrobe: wardrobe, groups: groups)
+        #expect(result.scores.count == 2)
+        #expect(result.topOneHits == 0)
+        #expect(result.topThreeHits == 1)
+        #expect(result.visionCoveredCount == 1)
+    }
+
+    @Test("평가 후보는 같은 카테고리의 옷만 중복 없이 집계한다")
+    func evaluationFiltersInvalidAndDuplicateCandidates() throws {
+        let truth = UUID(), bottom = UUID(), unknown = UUID()
+        let wardrobe = [GarmentSnapshot(id: truth, category: .top, name: "상의"),
+                        GarmentSnapshot(id: bottom, category: .bottom, name: "하의")]
+        let groups = [DetectedGarmentGroup(category: .top, candidateIDs: [unknown, bottom, truth, truth],
+                                           selectedGarmentID: nil, confidence: .none, source: .vision)]
+        let result = try OutfitEvaluation.evaluate(groundTruthIDs: [truth], wardrobe: wardrobe, groups: groups)
+        #expect(result.scores.first?.candidateIDs == [truth])
+        #expect(result.topOneHits == 1)
+        #expect(result.topThreeHits == 1)
+    }
+
+    @Test("빈 정답이나 옷장에 없는 정답은 평가하지 않는다")
+    func evaluationValidatesGroundTruth() {
+        #expect(throws: OutfitEvaluationError.self) {
+            try OutfitEvaluation.evaluate(groundTruthIDs: [], wardrobe: [], groups: [])
+        }
+        #expect(throws: OutfitEvaluationError.self) {
+            try OutfitEvaluation.evaluate(groundTruthIDs: [UUID()], wardrobe: [], groups: [])
+        }
+    }
+
+    @Test("평가 모음은 유효한 최근 50회만 보존하고 사진 없이 공유한다")
+    @MainActor
+    func evaluationSessionBoundsAndExportsResults() throws {
+        let session = OutfitEvaluationSession()
+        let truth = UUID()
+        let score = OutfitEvaluationScore(garmentID: truth, category: "상의", candidateIDs: [truth], usedVision: true)
+        for _ in 0..<55 {
+            session.append(OutfitEvaluationResult(id: UUID(), evaluatedAt: .now, analyzerVersion: "test", scores: [score]))
+        }
+        let last = try #require(session.results.last)
+        session.append(last)
+        session.append(OutfitEvaluationResult(id: UUID(), evaluatedAt: .now, analyzerVersion: "test", scores: []))
+        #expect(session.results.count == 50)
+        #expect(session.truthCount == 50 && session.topOneHits == 50 && session.topThreeHits == 50)
+        #expect(!session.exportJSON.contains("imageData"))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode([OutfitEvaluationResult].self, from: Data(session.exportJSON.utf8))
+        #expect(decoded.count == 50)
+        session.clear()
+        #expect(session.results.isEmpty)
+        session.append(last, photoKey: "same-photo")
+        session.append(OutfitEvaluationResult(id: UUID(), evaluatedAt: .now, analyzerVersion: "test", scores: [score]), photoKey: "same-photo")
+        #expect(session.results.count == 1)
     }
 
     @Test("Vision 후보는 특징 거리가 가까운 순서로 최대 세 개를 고른다")

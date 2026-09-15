@@ -89,6 +89,20 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["착장 사진 선택하고 비교"].exists)
     }
 
+    func testMyProvidesGroundTruthEvaluation() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["MY"].tap()
+        for _ in 0..<8 where !app.buttons["profile.visionEvaluation"].exists { app.swipeUp() }
+        app.buttons["profile.visionEvaluation"].tap()
+        XCTAssertTrue(app.navigationBars["정답 기반 추천 평가"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["평가할 착장 사진 선택"].exists)
+        XCTAssertFalse(app.buttons["지정한 정답으로 평가"].isEnabled)
+        for _ in 0..<4 where !app.buttons["evaluation.share"].exists { app.swipeUp() }
+        XCTAssertTrue(app.buttons["evaluation.share"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["evaluation.share"].isEnabled)
+    }
+
     func testCommunityAndMarketTabsHaveSeedContent() throws {
         continueAfterFailure = false
         let app = launchApp()

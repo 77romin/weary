@@ -93,6 +93,7 @@ struct AIRecommendationInsightsView: View {
     let summary: AIRecommendationSummary
     @ObservedObject private var diagnostics = OutfitAnalysisDiagnostics.shared
     @State private var showingBenchmark = false
+    @State private var showingEvaluation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -108,6 +109,9 @@ struct AIRecommendationInsightsView: View {
             Button("반복 분석 성능 비교") { showingBenchmark = true }
                 .font(.subheadline.weight(.semibold))
                 .accessibilityIdentifier("profile.visionBenchmark")
+            Button("정답 옷으로 추천 평가") { showingEvaluation = true }
+                .font(.subheadline.weight(.semibold))
+                .accessibilityIdentifier("profile.visionEvaluation")
             if let elapsed = diagnostics.elapsedMilliseconds {
                 Text("최근 분석 \(elapsed.formatted(.number.precision(.fractionLength(0))))ms · \(diagnostics.performance == nil ? "기본 후보 전환" : "Vision 비교")")
                     .font(.caption)
@@ -143,6 +147,110 @@ struct AIRecommendationInsightsView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("profile.aiRecommendationInsights")
         .sheet(isPresented: $showingBenchmark) { VisionBenchmarkView() }
+        .sheet(isPresented: $showingEvaluation) { VisionEvaluationView() }
+    }
+}
+
+private struct VisionEvaluationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query private var garments: [Garment]
+    @ObservedObject private var session = OutfitEvaluationSession.shared
+    @State private var photo: PhotosPickerItem?
+    @State private var photoData: Data?
+    @State private var truthIDs = Set<UUID>()
+    @State private var result: OutfitEvaluationResult?
+    @State private var message: String?
+    @State private var isWorking = false
+    @State private var evaluationTask: Task<Void, Never>?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("1. 사진과 정답 지정") {
+                    Text("본인 또는 동의받은 착장 사진을 선택하고, 추천을 보기 전에 실제로 입은 옷을 모두 지정해 주세요. 사진·결과는 자동 저장하거나 서버로 보내지 않습니다.")
+                        .font(.caption)
+                    PhotosPicker(photoData == nil ? "평가할 착장 사진 선택" : "사진 선택됨 · 변경", selection: $photo, matching: .images)
+                    ForEach(garments.sorted { $0.name < $1.name }) { garment in
+                        Button {
+                            if truthIDs.contains(garment.id) { truthIDs.remove(garment.id) }
+                            else { truthIDs.insert(garment.id) }
+                            result = nil
+                        } label: {
+                            HStack {
+                                Image(systemName: truthIDs.contains(garment.id) ? "checkmark.circle.fill" : "circle")
+                                Text("\(garment.category.rawValue) · \(garment.name)")
+                            }
+                        }
+                    }
+                }
+                .disabled(isWorking)
+                Section("2. 추천 평가") {
+                    Button("지정한 정답으로 평가") { evaluate() }
+                        .disabled(isWorking || photoData == nil || truthIDs.isEmpty || result != nil)
+                    if isWorking { ProgressView("기기 안에서 추천 비교 중…") }
+                    if let message { Text(message).font(.caption) }
+                    if let result {
+                        LabeledContent("정답 옷별 Top-1", value: "\(result.topOneHits)/\(result.scores.count)")
+                        LabeledContent("정답 옷별 Top-3", value: "\(result.topThreeHits)/\(result.scores.count)")
+                        LabeledContent("Vision 비교 범위", value: "\(result.visionCoveredCount)/\(result.scores.count)")
+                        Text("정답 옷이 해당 카테고리의 첫 후보·상위 3개 후보에 포함되는지 계산합니다. 비교할 Vision 후보가 없는 정답은 미적중입니다. 같은 카테고리의 여러 옷도 각각 집계합니다.")
+                            .font(.caption)
+                    }
+                }
+                Section("실행 중 평가 모음 · 최근 50회") {
+                    Text("\(session.results.count)회 · 정답 \(session.truthCount)개 · Top-1 \(session.topOneHits)개 · Top-3 \(session.topThreeHits)개 적중")
+                    Text("앱 종료 시 사라집니다. 같은 사진의 재평가는 최근 결과로 교체합니다. 채택률과 별도이며 정답 카테고리의 Vision 비교가 전혀 없으면 제외합니다. 얼굴 사진·옷 이름 없이 UUID·카테고리·후보·버전만 공유합니다.")
+                        .font(.caption)
+                    ShareLink("평가 JSON 공유", item: session.exportJSON)
+                        .disabled(session.results.isEmpty)
+                        .accessibilityIdentifier("evaluation.share")
+                    Button("평가 모음 비우기", role: .destructive) { session.clear() }
+                        .disabled(isWorking || session.results.isEmpty)
+                }
+            }
+            .navigationTitle("정답 기반 추천 평가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("완료") { dismiss() } }
+            .task(id: photo) {
+                photoData = nil
+                result = nil
+                truthIDs.removeAll()
+                message = nil
+                guard let photo else { return }
+                do {
+                    let data = try await photo.loadTransferable(type: Data.self)
+                    try Task.checkCancellation()
+                    photoData = data
+                    if data == nil { message = "사진을 읽지 못했어요." }
+                } catch is CancellationError {
+                } catch { message = "사진을 읽지 못했어요. 다시 선택해 주세요." }
+            }
+            .onDisappear { evaluationTask?.cancel() }
+        }
+    }
+
+    private func evaluate() {
+        guard !isWorking, let photoData, !truthIDs.isEmpty else { return }
+        let truth = truthIDs
+        let snapshots = garments.map { GarmentSnapshot(id: $0.id, category: $0.category, name: $0.name,
+                                                       imageData: $0.imageData, cutoutImageData: $0.cutoutImageData) }
+        isWorking = true
+        message = nil
+        evaluationTask = Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                let groups = try await DeviceOutfitAnalyzer().analyze(photoData: photoData, wardrobe: snapshots)
+                try Task.checkCancellation()
+                let measured = try OutfitEvaluation.evaluate(groundTruthIDs: truth, wardrobe: snapshots, groups: groups)
+                guard measured.isValidVisionRun else {
+                    message = "정답 옷에 대한 Vision 비교가 없어 평가 모음에서 제외했어요. 실제 아이폰과 옷 사진을 확인해 주세요."
+                    return
+                }
+                result = measured
+                session.append(measured, photoKey: FeaturePrintCache<Int>.imageKey(photoData))
+            } catch is CancellationError {
+            } catch { message = error.localizedDescription }
+        }
     }
 }
 
