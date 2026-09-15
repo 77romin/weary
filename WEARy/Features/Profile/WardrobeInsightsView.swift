@@ -88,6 +88,46 @@ struct WardrobeInsightsView: View {
     }
 }
 
+struct AIRecommendationInsightsView: View {
+    let summary: AIRecommendationSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI 추천 실험실", systemImage: "sparkles")
+                    .font(.headline)
+                Spacer()
+                Label("기기에만 저장", systemImage: "lock.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+            }
+
+            if summary.analyzedOutfitCount == 0 {
+                Text("새 착장을 기록하면 Vision 후보를 얼마나 유지하고 수정했는지 보여드려요.")
+                    .font(.subheadline)
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+            } else {
+                HStack(spacing: 10) {
+                    MetricPill(value: "\(summary.acceptanceRate)%", label: "후보 채택")
+                    MetricPill(value: "\(summary.topOneRate)%", label: "첫 후보")
+                    MetricPill(value: "\(summary.adjustmentRate)%", label: "수정 필요")
+                }
+
+                Text("착장 \(summary.analyzedOutfitCount)회 · Vision 후보 \(summary.visionCandidateCount)개 · 기본 후보 전환 \(summary.fallbackOutfitCount)회")
+                    .font(.caption)
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+                Text("정답 정확도가 아니라, 사용자가 최종 확정한 선택을 기준으로 한 PoC 지표예요.")
+                    .font(.caption2)
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+            }
+        }
+        .padding(16)
+        .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("profile.aiRecommendationInsights")
+    }
+}
+
 struct WardrobeReviewView: View {
     @Environment(\.modelContext) private var modelContext
     let garments: [Garment]

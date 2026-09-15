@@ -21,6 +21,12 @@ final class Outfit {
     var isConfirmed: Bool = true
     var isPublished: Bool = false
     var createdAt: Date = Date.now
+    var aiAnalysisAttempted: Bool = false
+    var visionCandidateCount: Int = 0
+    var visionAcceptedCount: Int = 0
+    var visionTopOneAcceptedCount: Int = 0
+    var visionAdjustedCount: Int = 0
+    var aiAnalysisUsedFallback: Bool = false
     @Attribute(.externalStorage) var photoData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \OutfitItem.outfit)
@@ -33,6 +39,12 @@ final class Outfit {
         isConfirmed: Bool = true,
         isPublished: Bool = false,
         createdAt: Date = .now,
+        aiAnalysisAttempted: Bool = false,
+        visionCandidateCount: Int = 0,
+        visionAcceptedCount: Int = 0,
+        visionTopOneAcceptedCount: Int = 0,
+        visionAdjustedCount: Int = 0,
+        aiAnalysisUsedFallback: Bool = false,
         photoData: Data? = nil
     ) {
         self.id = id
@@ -41,6 +53,12 @@ final class Outfit {
         self.isConfirmed = isConfirmed
         self.isPublished = isPublished
         self.createdAt = createdAt
+        self.aiAnalysisAttempted = aiAnalysisAttempted
+        self.visionCandidateCount = visionCandidateCount
+        self.visionAcceptedCount = visionAcceptedCount
+        self.visionTopOneAcceptedCount = visionTopOneAcceptedCount
+        self.visionAdjustedCount = visionAdjustedCount
+        self.aiAnalysisUsedFallback = aiAnalysisUsedFallback
         self.photoData = photoData
     }
 
@@ -73,6 +91,8 @@ final class OutfitItem {
     var id: UUID = UUID()
     var sourceRaw: String = "manual"
     var confidenceRaw: String = "none"
+    var suggestedRank: Int?
+    var wasManuallyAdjusted: Bool = false
     var displayOrder: Int?
     var garment: Garment?
     var outfit: Outfit?
@@ -83,6 +103,8 @@ final class OutfitItem {
         outfit: Outfit,
         source: MatchSource = .manual,
         confidence: MatchConfidence = .none,
+        suggestedRank: Int? = nil,
+        wasManuallyAdjusted: Bool = false,
         displayOrder: Int? = nil
     ) {
         self.id = id
@@ -90,6 +112,12 @@ final class OutfitItem {
         self.outfit = outfit
         sourceRaw = source.rawValue
         confidenceRaw = confidence.rawValue
+        self.suggestedRank = suggestedRank
+        self.wasManuallyAdjusted = wasManuallyAdjusted
         self.displayOrder = displayOrder
+    }
+
+    var matchSource: MatchSource {
+        MatchSource(rawValue: sourceRaw) ?? .manual
     }
 }

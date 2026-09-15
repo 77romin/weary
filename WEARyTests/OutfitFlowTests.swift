@@ -582,6 +582,68 @@ struct OutfitFlowTests {
         #expect(garment.wearCount == 1)
     }
 
+    @Test("AI 추천 지표는 새로 분석한 확정 착장만 집계한다")
+    func aiRecommendationSummaryUsesConfirmedAnalyzedOutfits() {
+        let top = Garment(name: "셔츠", category: .top, colorName: "화이트", colorHex: "FFFFFF")
+        let bottom = Garment(name: "데님", category: .bottom, colorName: "블루", colorHex: "7392B7")
+        let shoes = Garment(name: "스니커즈", category: .shoes, colorName: "화이트", colorHex: "FFFFFF")
+        let first = Outfit(
+            wornAt: .now,
+            aiAnalysisAttempted: true,
+            visionCandidateCount: 3,
+            visionAcceptedCount: 2,
+            visionTopOneAcceptedCount: 1,
+            visionAdjustedCount: 1
+        )
+        first.items = [
+            OutfitItem(garment: top, outfit: first, source: .vision, suggestedRank: 1),
+            OutfitItem(
+                garment: bottom,
+                outfit: first,
+                source: .vision,
+                suggestedRank: 2,
+                wasManuallyAdjusted: true
+            ),
+        ]
+        let second = Outfit(
+            wornAt: .now,
+            aiAnalysisAttempted: true,
+            visionCandidateCount: 2,
+            visionAcceptedCount: 1,
+            visionAdjustedCount: 2,
+            aiAnalysisUsedFallback: true
+        )
+        second.items = [
+            OutfitItem(
+                garment: shoes,
+                outfit: second,
+                source: .vision,
+                wasManuallyAdjusted: true
+            ),
+        ]
+        let legacy = Outfit(wornAt: .now)
+        let draft = Outfit(
+            wornAt: .now,
+            isConfirmed: false,
+            aiAnalysisAttempted: true,
+            visionCandidateCount: 99
+        )
+
+        let summary = WardrobeInsights.aiRecommendationSummary(
+            outfits: [first, second, legacy, draft]
+        )
+
+        #expect(summary.analyzedOutfitCount == 2)
+        #expect(summary.visionCandidateCount == 5)
+        #expect(summary.visionAcceptedCount == 3)
+        #expect(summary.acceptanceRate == 60)
+        #expect(summary.topOneRate == 33)
+        #expect(summary.adjustmentRate == 60)
+        #expect(summary.fallbackOutfitCount == 1)
+        first.items = []
+        #expect(WardrobeInsights.aiRecommendationSummary(outfits: [first, second]) == summary)
+    }
+
     @Test("착장 수정은 선택한 옷과 메모를 갱신한다")
     @MainActor
     func outfitEditingUpdatesItemsAndNote() throws {

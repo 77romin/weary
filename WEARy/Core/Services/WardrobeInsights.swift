@@ -22,7 +22,38 @@ struct GarmentUsage: Identifiable {
     var id: UUID { garment.id }
 }
 
+struct AIRecommendationSummary: Equatable {
+    let analyzedOutfitCount: Int
+    let visionCandidateCount: Int
+    let visionAcceptedCount: Int
+    let topOneAcceptedCount: Int
+    let adjustedCandidateCount: Int
+    let fallbackOutfitCount: Int
+
+    var acceptanceRate: Int { percentage(visionAcceptedCount, of: visionCandidateCount) }
+    var topOneRate: Int { percentage(topOneAcceptedCount, of: visionAcceptedCount) }
+    var adjustmentRate: Int { percentage(adjustedCandidateCount, of: visionCandidateCount) }
+
+    private func percentage(_ value: Int, of total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        return Int((Double(value) / Double(total) * 100).rounded())
+    }
+}
+
 enum WardrobeInsights {
+    static func aiRecommendationSummary(outfits: [Outfit]) -> AIRecommendationSummary {
+        let analyzedOutfits = outfits.filter { $0.isConfirmed && $0.aiAnalysisAttempted }
+
+        return AIRecommendationSummary(
+            analyzedOutfitCount: analyzedOutfits.count,
+            visionCandidateCount: analyzedOutfits.reduce(0) { $0 + $1.visionCandidateCount },
+            visionAcceptedCount: analyzedOutfits.reduce(0) { $0 + $1.visionAcceptedCount },
+            topOneAcceptedCount: analyzedOutfits.reduce(0) { $0 + $1.visionTopOneAcceptedCount },
+            adjustedCandidateCount: analyzedOutfits.reduce(0) { $0 + $1.visionAdjustedCount },
+            fallbackOutfitCount: analyzedOutfits.filter(\.aiAnalysisUsedFallback).count
+        )
+    }
+
     static func wearCount(for garment: Garment, since startDate: Date) -> Int {
         garment.confirmedOutfitItems.filter { item in
             guard let wornAt = item.outfit?.wornAt else { return false }

@@ -139,6 +139,10 @@ struct ProfileView: View {
                             MonthOutfitCalendarView(outfits: outfits)
                         }
 
+                        AIRecommendationInsightsView(
+                            summary: WardrobeInsights.aiRecommendationSummary(outfits: outfits)
+                        )
+
                         WardrobeInsightsView(garments: garments)
 
                         WardrobeReviewView(garments: garments)

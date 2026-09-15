@@ -29,6 +29,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
     let category: GarmentCategory
     let candidateIDs: [UUID]
     var selectedGarmentID: UUID?
+    var wasManuallyAdjusted: Bool
     let confidence: MatchConfidence
     let source: MatchSource
 
@@ -37,6 +38,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
         category: GarmentCategory,
         candidateIDs: [UUID],
         selectedGarmentID: UUID?,
+        wasManuallyAdjusted: Bool = false,
         confidence: MatchConfidence,
         source: MatchSource = .ai
     ) {
@@ -44,6 +46,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
         self.category = category
         self.candidateIDs = candidateIDs
         self.selectedGarmentID = selectedGarmentID
+        self.wasManuallyAdjusted = wasManuallyAdjusted
         self.confidence = confidence
         self.source = source
     }

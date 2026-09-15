@@ -399,6 +399,9 @@ struct CaptureView: View {
 
     private func select(_ garment: Garment?, in groupID: UUID) {
         guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        if groups[index].selectedGarmentID != garment?.id {
+            groups[index].wasManuallyAdjusted = true
+        }
         groups[index].selectedGarmentID = garment?.id
     }
 
@@ -423,7 +426,21 @@ struct CaptureView: View {
 
     private func saveOutfit() {
         publishFailureMessage = nil
-        let outfit = Outfit(wornAt: wornAt, isPublished: false, photoData: photoData)
+        let visionGroups = groups.filter { $0.source == .vision }
+        let outfit = Outfit(
+            wornAt: wornAt,
+            isPublished: false,
+            aiAnalysisAttempted: true,
+            visionCandidateCount: visionGroups.count,
+            visionAcceptedCount: visionGroups.filter { $0.selectedGarmentID != nil }.count,
+            visionTopOneAcceptedCount: visionGroups.filter {
+                guard let selectedID = $0.selectedGarmentID else { return false }
+                return $0.candidateIDs.first == selectedID
+            }.count,
+            visionAdjustedCount: visionGroups.filter(\.wasManuallyAdjusted).count,
+            aiAnalysisUsedFallback: groups.contains { $0.source == .ai },
+            photoData: photoData
+        )
         modelContext.insert(outfit)
         let selectedGarments = selectedGarmentIDs
             .compactMap(garment(with:))
@@ -433,11 +450,16 @@ struct CaptureView: View {
             }
         for (index, selectedGarment) in selectedGarments.enumerated() {
             let group = groups.first { $0.selectedGarmentID == selectedGarment.id }
+            let suggestedRank = group?.candidateIDs
+                .firstIndex(of: selectedGarment.id)
+                .map { $0 + 1 }
             modelContext.insert(OutfitItem(
                 garment: selectedGarment,
                 outfit: outfit,
                 source: group?.source ?? .manual,
                 confidence: group?.confidence ?? .none,
+                suggestedRank: suggestedRank,
+                wasManuallyAdjusted: group?.wasManuallyAdjusted ?? false,
                 displayOrder: index
             ))
         }
