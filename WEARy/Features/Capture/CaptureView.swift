@@ -395,15 +395,17 @@ struct CaptureView: View {
     }
 
     private var reviewTitle: String {
-        groups.contains { $0.source == .ai }
+        if groups.isEmpty { return "확실한 옷을 찾지 못했어요" }
+        return groups.contains { $0.source == .ai }
             ? "옷장에서 기본 후보를 골랐어요"
-            : "AI가 \(groups.count)개 카테고리 후보를 찾았어요"
+            : "AI가 입은 옷 후보 \(groups.count)개를 찾았어요"
     }
 
     private var reviewSubtitle: String {
-        groups.contains { $0.source == .ai }
+        if groups.isEmpty { return "잘못 기록하지 않도록 옷을 직접 추가해 주세요." }
+        return groups.contains { $0.source == .ai }
             ? "이미지 비교를 사용할 수 없어 직접 확인이 필요해요."
-            : "비슷한 옷을 확인하고 기록을 확정하세요."
+            : "확실한 후보만 골랐어요. 빠진 옷은 직접 추가할 수 있어요."
     }
 
     private func select(_ garment: Garment?, in groupID: UUID) {

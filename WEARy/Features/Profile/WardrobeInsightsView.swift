@@ -332,9 +332,10 @@ private struct VisionBenchmarkView: View {
                     }
                     Section("프로세스 메모리 관측") {
                         if let bytes = result.maximumObservedFootprintBytes {
-                            LabeledContent("관측 최대 footprint", value: ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory))
+                            LabeledContent("분석 중 최대 footprint", value: ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory))
                         } else { Text("이 환경에서 메모리 정보를 읽지 못했어요.") }
-                        Text("시작 전과 각 분석 완료 후의 앱 전체 footprint 표본입니다. 분석 도중의 실제 최고점은 아니며 다른 화면·OS 상태의 영향을 받습니다. 빈 캐시는 OS·Vision 자체의 최초 실행을 의미하지 않습니다.")
+                        LabeledContent("메모리 표본", value: "총 \(result.totalMemorySampleCount)회")
+                        Text("각 분석의 시작·종료와 실행 중 약 10ms 간격으로 읽은 앱 전체 footprint의 관측 최대값입니다. 순간적인 실제 최고점을 놓칠 수 있고 다른 화면·OS 상태의 영향을 받습니다. 빈 캐시는 OS·Vision 자체의 최초 실행을 의미하지 않습니다.")
                             .font(.caption)
                     }
                 }

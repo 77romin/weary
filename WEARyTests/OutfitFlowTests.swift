@@ -7,6 +7,57 @@ import UIKit
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("Supabase 이미지 경로의 UUID는 RLS 비교와 같은 소문자를 사용한다")
+    func supabaseStoragePathsNormalizeUUIDCase() throws {
+        let ownerID = try #require(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
+        let resourceID = try #require(UUID(uuidString: "11111111-2222-3333-4444-AAAAAAAAAAAA"))
+
+        #expect(
+            SupabaseStoragePath.resourceRoot(ownerID: ownerID, resourceID: resourceID)
+                == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/11111111-2222-3333-4444-aaaaaaaaaaaa"
+        )
+    }
+
+    @Test("옷 존재 판단은 확실한 후보만 남기고 불확실하면 가장 가까운 한 종류만 남긴다")
+    func filtersUnlikelyGarmentCategories() {
+        let outer = DetectedGarmentGroup(
+            category: .outer, candidateIDs: [UUID()], candidateDistances: [4],
+            selectedGarmentID: UUID(), confidence: .medium, source: .vision
+        )
+        let top = DetectedGarmentGroup(
+            category: .top, candidateIDs: [UUID()], candidateDistances: [2],
+            selectedGarmentID: UUID(), confidence: .medium, source: .vision
+        )
+        let bottom = DetectedGarmentGroup(
+            category: .bottom, candidateIDs: [UUID()], candidateDistances: [6],
+            selectedGarmentID: UUID(), confidence: .medium, source: .vision
+        )
+        #expect(DeviceOutfitAnalyzer.likelyPresentGroups(from: [outer, top, bottom]).map(\.category) == [.top])
+
+        let shoes = DetectedGarmentGroup(
+            category: .shoes, candidateIDs: [UUID()], candidateDistances: [3],
+            selectedGarmentID: UUID(), confidence: .high, source: .vision
+        )
+        #expect(DeviceOutfitAnalyzer.likelyPresentGroups(from: [outer, top, shoes]).map(\.category) == [.shoes])
+    }
+
+    @Test("매물 RPC는 선택 정보가 없어도 필수 nullable 인자를 null로 전송한다")
+    func marketRPCEncodesExplicitNullArguments() throws {
+        let parameters = MarketReplaceParameters(
+            listingID: UUID(), title: "테스트", description: "", price: 10_000,
+            condition: "good", status: "active", meetingName: "", meetingAddress: "",
+            meetingLatitude: nil, meetingLongitude: nil, media: [], verification: nil
+        )
+        let object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(parameters)) as? [String: Any]
+        )
+
+        #expect(object["p_meeting_latitude"] is NSNull)
+        #expect(object["p_meeting_longitude"] is NSNull)
+        #expect(object["p_verification"] is NSNull)
+    }
+
+
     @Test("공개 사진 게시에는 매번 업로드 인지와 게시 권한 확인이 모두 필요하다")
     func publicPhotoConsentRequiresBothConfirmations() {
         var consent = PublicPhotoPublicationConsent()
@@ -101,7 +152,7 @@ struct OutfitFlowTests {
         #expect(benchmark.cold.performance.generatedPrints == 1)
         #expect(benchmark.warm.count == 3)
         #expect(benchmark.warm.allSatisfy { $0.performance.cacheHits == 1 && $0.performance.generatedPrints == 0 })
-        print("Vision synthetic benchmark: cold=\(benchmark.cold.milliseconds)ms warmMedian=\(benchmark.warmMedianMilliseconds)ms observedFootprint=\(benchmark.maximumObservedFootprintBytes ?? 0)bytes")
+        print("Vision synthetic benchmark: cold=\(benchmark.cold.milliseconds)ms warmMedian=\(benchmark.warmMedianMilliseconds)ms observedFootprint=\(benchmark.maximumObservedFootprintBytes ?? 0)bytes memorySamples=\(benchmark.totalMemorySampleCount)")
 #endif
         #expect(group.candidateIDs == [garmentID])
         if group.source == .vision && group.confidence == .none {
@@ -161,15 +212,16 @@ struct OutfitFlowTests {
     @Test("성능 비교는 중앙값과 메모리 관측 표본을 정확히 집계한다")
     func visionBenchmarkSummarizesSamples() {
         let performance = VisionAnalysisPerformance(cacheHits: 1, generatedPrints: 0, cachedPrints: 1, cachedPayloadBytes: 100)
-        let cold = VisionBenchmarkSample(milliseconds: 20, performance: performance, footprintBytes: 100)
+        let cold = VisionBenchmarkSample(milliseconds: 20, performance: performance, peakFootprintBytes: 100, memorySampleCount: 4)
         let warm = [
-            VisionBenchmarkSample(milliseconds: 9, performance: performance, footprintBytes: nil),
-            VisionBenchmarkSample(milliseconds: 3, performance: performance, footprintBytes: 150),
-            VisionBenchmarkSample(milliseconds: 6, performance: performance, footprintBytes: 110)
+            VisionBenchmarkSample(milliseconds: 9, performance: performance, peakFootprintBytes: nil, memorySampleCount: 2),
+            VisionBenchmarkSample(milliseconds: 3, performance: performance, peakFootprintBytes: 150, memorySampleCount: 2),
+            VisionBenchmarkSample(milliseconds: 6, performance: performance, peakFootprintBytes: 110, memorySampleCount: 3)
         ]
         let result = VisionBenchmarkResult(cold: cold, warm: warm, initialFootprintBytes: 120)
         #expect(result.warmMedianMilliseconds == 6)
         #expect(result.maximumObservedFootprintBytes == 150)
+        #expect(result.totalMemorySampleCount == 11)
         let even = VisionBenchmarkResult(cold: cold, warm: Array(warm.prefix(2)), initialFootprintBytes: nil)
         #expect(even.warmMedianMilliseconds == 6)
         if let bytes = VisionCacheBenchmark.memoryFootprintBytes() { #expect(bytes > 0) }

@@ -167,6 +167,29 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         return Array((ranked + fallbackIDs.filter { !ranked.contains($0) }).prefix(3))
     }
 
+    /// Feature prints measure visual similarity, not object presence. Keep only
+    /// distinctive matches; if none are distinctive, retain the single closest
+    /// medium-confidence category so unrelated wardrobe categories are not saved.
+    nonisolated static func likelyPresentGroups(
+        from groups: [DetectedGarmentGroup]
+    ) -> [DetectedGarmentGroup] {
+        let visionGroups = groups.filter { $0.source == .vision }
+        let highConfidence = visionGroups.filter { $0.confidence == .high }
+        if !highConfidence.isEmpty { return highConfidence }
+
+        return visionGroups
+            .filter { $0.confidence == .medium }
+            .min {
+                let left = $0.candidateDistances.first.flatMap { $0 } ?? .greatestFiniteMagnitude
+                let right = $1.candidateDistances.first.flatMap { $0 } ?? .greatestFiniteMagnitude
+                if left == right {
+                    return $0.category.outfitSortOrder < $1.category.outfitSortOrder
+                }
+                return left < right
+            }
+            .map { [$0] } ?? []
+    }
+
     fileprivate nonisolated static func analyzeOnDevice(
         photoData: Data,
         wardrobe: [GarmentSnapshot],
@@ -359,7 +382,7 @@ private actor DeviceVisionEngine {
     func analyze(photoData: Data, wardrobe: [GarmentSnapshot]) throws -> VisionAnalysisReport {
         var hits = 0
         var generated = 0
-        let groups = try DeviceOutfitAnalyzer.analyzeOnDevice(
+        let comparedGroups = try DeviceOutfitAnalyzer.analyzeOnDevice(
             photoData: photoData, wardrobe: wardrobe
         ) { data in
             try Task.checkCancellation()
@@ -376,6 +399,7 @@ private actor DeviceVisionEngine {
             cache.insert(observation, for: key, cost: observation.data.count)
             return observation
         }
+        let groups = DeviceOutfitAnalyzer.likelyPresentGroups(from: comparedGroups)
         return VisionAnalysisReport(groups: groups, performance: VisionAnalysisPerformance(
             cacheHits: hits, generatedPrints: generated,
             cachedPrints: cache.count, cachedPayloadBytes: cache.payloadBytes
@@ -399,7 +423,8 @@ final class OutfitAnalysisDiagnostics: ObservableObject {
 struct VisionBenchmarkSample: Sendable {
     let milliseconds: Double
     let performance: VisionAnalysisPerformance
-    let footprintBytes: UInt64?
+    let peakFootprintBytes: UInt64?
+    let memorySampleCount: Int
 }
 
 struct VisionBenchmarkResult: Sendable {
@@ -415,8 +440,26 @@ struct VisionBenchmarkResult: Sendable {
             ? (values[middle - 1] + values[middle]) / 2 : values[middle]
     }
     var maximumObservedFootprintBytes: UInt64? {
-        ([initialFootprintBytes, cold.footprintBytes] + warm.map(\.footprintBytes))
+        ([initialFootprintBytes, cold.peakFootprintBytes] + warm.map(\.peakFootprintBytes))
             .compactMap { $0 }.max()
+    }
+    var totalMemorySampleCount: Int {
+        cold.memorySampleCount + warm.reduce(0) { $0 + $1.memorySampleCount }
+    }
+}
+
+private actor ProcessMemoryPeakAccumulator {
+    private var maximumBytes: UInt64?
+    private var sampleCount = 0
+
+    func record(_ bytes: UInt64?) {
+        guard let bytes else { return }
+        maximumBytes = max(maximumBytes ?? 0, bytes)
+        sampleCount += 1
+    }
+
+    func snapshot() -> (maximumBytes: UInt64?, sampleCount: Int) {
+        (maximumBytes, sampleCount)
     }
 }
 
@@ -442,13 +485,38 @@ enum VisionCacheBenchmark {
         engine: DeviceVisionEngine, photoData: Data, wardrobe: [GarmentSnapshot]
     ) async throws -> VisionBenchmarkSample {
         try Task.checkCancellation()
+        let memoryPeak = ProcessMemoryPeakAccumulator()
+        await memoryPeak.record(memoryFootprintBytes())
+        let sampler = Task(priority: .utility) {
+            while !Task.isCancelled {
+                await memoryPeak.record(memoryFootprintBytes())
+                do {
+                    try await Task.sleep(for: .milliseconds(10))
+                } catch {
+                    break
+                }
+            }
+        }
         let started = ContinuousClock.now
-        // No retry or Mock fallback: failed Vision comparisons must not look like measurements.
-        let report = try await engine.analyze(photoData: photoData, wardrobe: wardrobe)
+        let report: VisionAnalysisReport
+        do {
+            // No retry or Mock fallback: failed Vision comparisons must not look like measurements.
+            report = try await engine.analyze(photoData: photoData, wardrobe: wardrobe)
+        } catch {
+            sampler.cancel()
+            await sampler.value
+            throw error
+        }
         let duration = started.duration(to: .now).components
+        await memoryPeak.record(memoryFootprintBytes())
+        sampler.cancel()
+        await sampler.value
+        let memorySnapshot = await memoryPeak.snapshot()
         return VisionBenchmarkSample(
             milliseconds: Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15,
-            performance: report.performance, footprintBytes: memoryFootprintBytes()
+            performance: report.performance,
+            peakFootprintBytes: memorySnapshot.maximumBytes,
+            memorySampleCount: memorySnapshot.sampleCount
         )
     }
 

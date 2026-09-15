@@ -111,6 +111,31 @@ xcodebuild -quiet -project WEARy.xcodeproj -scheme WEARy \
 - 코드서명 없이 generic iPhone용 Debug 빌드도 성공했다. 최초 시도는 샌드박스의 GitHub DNS 제한으로 패키지를 받지 못했고, 네트워크 접근이 가능한 동일 명령 재실행에서 통과했다.
 - Apple Development 인증서로 연결된 iPhone 17용 Debug 빌드를 만들고 기존 `com.weary.prototype` 앱 위에 갱신 설치한 뒤 자동 실행까지 성공했다. 앱 데이터 삭제는 수행하지 않았다.
 
+## Vision 분석 중 메모리 표본 수집 — 2026-09-16
+
+- 기존의 시작 전·분석 완료 후 표본을 각 cold/warm 분석의 시작·종료 및 실행 중 약 10ms 주기 표본으로 확장했다.
+- MY 화면에 분석 중 관측 최대 footprint와 전체 메모리 표본 수를 함께 표시한다. 약 10ms보다 짧은 순간 최고점과 앱 외부 요인은 완전히 통제하지 못하므로 Instruments의 정밀 프로파일을 대체하지 않는다.
+- 시뮬레이터 단위 결과: `/tmp/weary-memory-sampling-v2/Logs/Test/Test-WEARy-2026.09.16_06-19-34-+0900.xcresult` — 61개 통과·실패 0개.
+- 실제 iPhone 17, iOS 26.6.2 단위 결과: `/tmp/weary-memory-sampling-device-v2/Logs/Test/Test-WEARy-2026.09.16_06-20-38-+0900.xcresult` — 61개 통과·실패 0개. 양쪽 결과는 로컬 규칙 테스트 46개와 서버 작업 없이 반환한 선택형 통합 테스트 15개를 포함한다.
+- 실기기 합성 입력 결과: cold 29.5505ms, warm 3회 중앙값 11.5215ms, 메모리 표본 16회, 관측 최대 footprint 100,844,464바이트. 실제 착장·대규모 옷장의 대표 성능을 의미하지 않는다.
+- MY Vision 성능 비교 화면 대상 UI 결과: `/tmp/weary-memory-sampling-v2/Logs/Test/Test-WEARy-2026.09.16_06-21-44-+0900.xcresult` — 1개 통과·실패 0개.
+
+## 피드·마켓 Storage RLS 등록 실패 수정 — 2026-09-16
+
+- Swift `UUID.uuidString`의 대문자 문자열로 이미지 경로를 만들었지만 Storage RLS는 `auth.uid()::text`와 리소스 UUID를 소문자로 비교해, 피드와 마켓 업로드가 모두 `new row violates row-level security policy`로 거부됐다.
+- 공통 `SupabaseStoragePath`가 소유자·게시물·매물·옷 UUID를 소문자로 정규화하도록 수정하고 커뮤니티와 마켓 업로더 및 통합 테스트 정리 경로에 적용했다.
+- 로컬 결과: `/tmp/weary-storage-path-fix/Logs/Test/Test-WEARy-2026.09.16_06-39-58-+0900.xcresult` — Xcode 62개 통과·실패 0개. 로컬 규칙 테스트 47개와 서버 작업 없이 반환한 선택형 통합 테스트 15개를 포함한다.
+- 선택형 통합 테스트는 테스트 러너 환경 변수 전달 여부를 별도로 입증하지 못했으므로 실제 서버 성공 근거로 사용하지 않는다. 실기기 재현으로 후속 RPC 인코딩 문제를 발견했다.
+- 수정 앱의 iPhone 17 개발 서명 Debug 빌드, 기존 앱 위 갱신 설치와 자동 실행에 성공했다. 앱 데이터 삭제는 수행하지 않았다.
+
+## 착장 후보·매물 RPC 회귀 수정 — 2026-09-16
+
+- Vision 특징값 유사도를 의류 존재 판단으로 과신하지 않도록, 고신뢰 카테고리만 유지하고 모두 중간 신뢰도일 때는 가장 가까운 카테고리 한 개만 남긴다. 실제 여러 옷이 누락될 가능성은 검토 화면의 수동 추가로 보완한다.
+- 옷장 인증을 끄면 `p_verification`이 JSON에서 생략되어 PostgREST가 `replace_market_listing` 시그니처를 찾지 못했다. 인증과 선택 좌표가 없을 때도 각 인수를 명시적 `null`로 인코딩하도록 수정했다.
+- 시뮬레이터 결과: `/tmp/weary-market-rpc-presence-2/Logs/Test/Test-WEARy-2026.09.16_06-57-25-+0900.xcresult` — 64개 통과·실패 0개.
+- 실제 Supabase 결과: `/tmp/weary-market-live-result-3.xcresult` — 15개 중 12개 통과. 매물 생성·인증 해제 수정·판매 완료·삭제 테스트는 통과했고, 실패 3개는 게시물·마켓 관심·채팅 Realtime 이벤트 수신 시간 초과다.
+- 연결된 iPhone 17에 개발 서명 Debug 빌드를 갱신 설치하고 실행했다. 기존 앱 데이터는 삭제하지 않았다.
+
 ## Release 재빌드
 
 ```bash

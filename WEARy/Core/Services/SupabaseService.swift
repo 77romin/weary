@@ -25,6 +25,16 @@ enum SupabaseService {
     }()
 }
 
+enum SupabaseStoragePath {
+    static func resourceRoot(ownerID: UUID, resourceID: UUID) -> String {
+        "\(component(ownerID))/\(component(resourceID))"
+    }
+
+    static func component(_ id: UUID) -> String {
+        id.uuidString.lowercased()
+    }
+}
+
 actor SupabaseSessionManager {
     static let shared = SupabaseSessionManager()
 

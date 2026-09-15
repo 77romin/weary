@@ -90,10 +90,10 @@ struct SupabaseIntegrationTests {
             capturedError = error
         }
 
-        let basePath = "\(userID.uuidString)/\(postID.uuidString)"
+        let basePath = SupabaseStoragePath.resourceRoot(ownerID: userID, resourceID: postID)
         _ = try? await client.storage.from("community-media").remove(paths: [
             "\(basePath)/look.png",
-            "\(basePath)/items/\(garmentID.uuidString).png",
+            "\(basePath)/items/\(SupabaseStoragePath.component(garmentID)).png",
         ])
         _ = try? await client
             .from("posts")
@@ -285,8 +285,9 @@ struct SupabaseIntegrationTests {
         let pixelPNG = Data(base64Encoded:
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
         )!
-        let galleryPath = "\(userID.uuidString)/\(listingID.uuidString)/gallery/0.png"
-        let cutoutPath = "\(userID.uuidString)/\(listingID.uuidString)/verification/cutout.png"
+        let basePath = SupabaseStoragePath.resourceRoot(ownerID: userID, resourceID: listingID)
+        let galleryPath = "\(basePath)/gallery/0.png"
+        let cutoutPath = "\(basePath)/verification/cutout.png"
         let marker = "Market repository integration \(UUID().uuidString)"
 
         try await client.from("market_listings").insert(IntegrationMarketListingInsert(

@@ -38,6 +38,7 @@ actor SupabaseCommunityPostPublisher: CommunityPostPublishing {
         let postID = UUID()
         var uploadedPaths: [String] = []
         var didCreatePost = false
+        let basePath = SupabaseStoragePath.resourceRoot(ownerID: userID, resourceID: postID)
 
         do {
             try await client
@@ -54,7 +55,7 @@ actor SupabaseCommunityPostPublisher: CommunityPostPublishing {
             didCreatePost = true
 
             let photo = try mediaFile(from: draft.photoData)
-            let photoPath = "\(userID.uuidString)/\(postID.uuidString)/look.\(photo.fileExtension)"
+            let photoPath = "\(basePath)/look.\(photo.fileExtension)"
             try await upload(photo, to: photoPath, using: client)
             uploadedPaths.append(photoPath)
 
@@ -72,7 +73,8 @@ actor SupabaseCommunityPostPublisher: CommunityPostPublishing {
 
                 if let imageData = item.imageData {
                     let image = try mediaFile(from: imageData)
-                    let path = "\(userID.uuidString)/\(postID.uuidString)/items/\(item.sourceGarmentID.uuidString).\(image.fileExtension)"
+                    let garmentID = SupabaseStoragePath.component(item.sourceGarmentID)
+                    let path = "\(basePath)/items/\(garmentID).\(image.fileExtension)"
                     try await upload(image, to: path, using: client)
                     uploadedPaths.append(path)
                     imagePath = path

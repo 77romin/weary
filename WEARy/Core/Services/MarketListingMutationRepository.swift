@@ -158,14 +158,15 @@ actor SupabaseMarketListingMutationRepository {
         userID: UUID,
         client: SupabaseClient
     ) async throws -> UploadedMarketContent {
-        let revision = UUID().uuidString
+        let revision = SupabaseStoragePath.component(UUID())
+        let basePath = SupabaseStoragePath.resourceRoot(ownerID: userID, resourceID: listingID)
         var paths: [String] = []
         var media: [MarketMediaParameter] = []
 
         do {
             for (index, data) in draft.galleryImages.enumerated() {
                 let file = try mediaFile(from: data)
-                let path = "\(userID.uuidString)/\(listingID.uuidString)/gallery/\(revision)-\(index).\(file.fileExtension)"
+                let path = "\(basePath)/gallery/\(revision)-\(index).\(file.fileExtension)"
                 try await upload(file, path: path, client: client)
                 paths.append(path)
                 media.append(MarketMediaParameter(storagePath: path, sortOrder: index))
@@ -178,7 +179,7 @@ actor SupabaseMarketListingMutationRepository {
                 var cutoutPath: String?
                 if let data = draft.cutoutImageData {
                     let file = try mediaFile(from: data)
-                    let path = "\(userID.uuidString)/\(listingID.uuidString)/verification/\(revision).\(file.fileExtension)"
+                    let path = "\(basePath)/verification/\(revision).\(file.fileExtension)"
                     try await upload(file, path: path, client: client)
                     paths.append(path)
                     cutoutPath = path
@@ -292,18 +293,18 @@ private struct MarketListingInsert: Encodable, Sendable {
     }
 }
 
-private struct MarketMediaParameter: Encodable, Sendable {
+struct MarketMediaParameter: Encodable, Sendable {
     let storagePath: String; let sortOrder: Int
     enum CodingKeys: String, CodingKey { case storagePath = "storage_path"; case sortOrder = "sort_order" }
 }
-private struct MarketVerificationParameter: Encodable, Sendable {
+struct MarketVerificationParameter: Encodable, Sendable {
     let sourcePrivateID: UUID; let garmentNameSnapshot: String; let purchasePrice: Int?; let lastWornAt: Date?; let wearCount: Int?; let cutoutStoragePath: String?; let isVisible: Bool
     enum CodingKeys: String, CodingKey {
         case sourcePrivateID = "source_private_id"; case garmentNameSnapshot = "garment_name_snapshot"; case purchasePrice = "purchase_price"
         case lastWornAt = "last_worn_at"; case wearCount = "wear_count"; case cutoutStoragePath = "cutout_storage_path"; case isVisible = "is_visible"
     }
 }
-private struct MarketReplaceParameters: Encodable, Sendable {
+struct MarketReplaceParameters: Encodable, Sendable {
     let listingID: UUID; let title: String; let description: String; let price: Int; let condition: String; let status: String
     let meetingName: String; let meetingAddress: String; let meetingLatitude: Double?; let meetingLongitude: Double?
     let media: [MarketMediaParameter]; let verification: MarketVerificationParameter?
@@ -311,6 +312,34 @@ private struct MarketReplaceParameters: Encodable, Sendable {
         case listingID = "p_listing_id"; case title = "p_title"; case description = "p_description"; case price = "p_price"
         case condition = "p_condition"; case status = "p_status"; case meetingName = "p_meeting_name"; case meetingAddress = "p_meeting_address"
         case meetingLatitude = "p_meeting_latitude"; case meetingLongitude = "p_meeting_longitude"; case media = "p_media"; case verification = "p_verification"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(listingID, forKey: .listingID)
+        try container.encode(title, forKey: .title)
+        try container.encode(description, forKey: .description)
+        try container.encode(price, forKey: .price)
+        try container.encode(condition, forKey: .condition)
+        try container.encode(status, forKey: .status)
+        try container.encode(meetingName, forKey: .meetingName)
+        try container.encode(meetingAddress, forKey: .meetingAddress)
+        if let meetingLatitude {
+            try container.encode(meetingLatitude, forKey: .meetingLatitude)
+        } else {
+            try container.encodeNil(forKey: .meetingLatitude)
+        }
+        if let meetingLongitude {
+            try container.encode(meetingLongitude, forKey: .meetingLongitude)
+        } else {
+            try container.encodeNil(forKey: .meetingLongitude)
+        }
+        try container.encode(media, forKey: .media)
+        if let verification {
+            try container.encode(verification, forKey: .verification)
+        } else {
+            try container.encodeNil(forKey: .verification)
+        }
     }
 }
 
