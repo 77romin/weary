@@ -112,6 +112,7 @@ struct DemoOutfitAnalyzer: OutfitAnalyzing {
 @MainActor
 struct DeviceOutfitAnalyzer: OutfitAnalyzing {
     private let fallback = DemoOutfitAnalyzer()
+    nonisolated static let hatCategoryHintThreshold: Float = 0.015
 
     func analyze(
         photoData: Data?,
@@ -171,10 +172,24 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
     /// distinctive matches; if none are distinctive, retain the single closest
     /// medium-confidence category so unrelated wardrobe categories are not saved.
     nonisolated static func likelyPresentGroups(
-        from groups: [DetectedGarmentGroup]
+        from groups: [DetectedGarmentGroup],
+        categoryHints: [GarmentCategory: Float] = [:]
     ) -> [DetectedGarmentGroup] {
         let visionGroups = groups.filter { $0.source == .vision }
-        let highConfidence = visionGroups.filter { $0.confidence == .high }
+        var highConfidence = visionGroups.filter { $0.confidence == .high }
+
+        // A hat can appear anywhere when the user photographs a laid-out outfit,
+        // so the fixed head crop alone is not reliable. A strong whole-image
+        // classification restores the ranked wardrobe hat without discarding
+        // other high-confidence garments from a full-body photo.
+        if categoryHints[.hat, default: 0] >= hatCategoryHintThreshold,
+           var hat = visionGroups.first(where: { $0.category == .hat }),
+           !highConfidence.contains(where: { $0.category == .hat }) {
+            if hat.selectedGarmentID == nil {
+                hat.selectedGarmentID = hat.candidateIDs.first
+            }
+            highConfidence.append(hat)
+        }
         if !highConfidence.isEmpty { return highConfidence }
 
         return visionGroups
@@ -190,6 +205,42 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
             .map { [$0] } ?? []
     }
 
+    nonisolated static func categoryHints(
+        from classifications: [(identifier: String, confidence: Float)]
+    ) -> [GarmentCategory: Float] {
+        let keywords: [GarmentCategory: Set<String>] = [
+            .hat: ["hat", "cap", "beanie", "bonnet", "sombrero", "headwear", "fedora"],
+            .outer: ["coat", "jacket", "parka", "windbreaker", "overcoat"],
+            .top: ["shirt", "jersey", "sweater", "sweatshirt", "cardigan", "blouse", "pullover"],
+            .dress: ["dress", "gown"],
+            .bottom: ["jean", "jeans", "trouser", "trousers", "pants", "skirt", "shorts"],
+            .shoes: ["shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "sandal", "loafer"],
+            .bag: ["bag", "handbag", "purse", "backpack", "rucksack"],
+            .accessory: ["necktie", "tie", "scarf", "belt", "watch", "necklace", "sunglasses"],
+        ]
+        var hints: [GarmentCategory: Float] = [:]
+        for classification in classifications where classification.confidence > 0 {
+            let tokens = Set(
+                classification.identifier.lowercased().split { !$0.isLetter }.map(String.init)
+            )
+            for (category, categoryKeywords) in keywords
+            where !tokens.isDisjoint(with: categoryKeywords) {
+                hints[category] = max(hints[category] ?? 0, classification.confidence)
+            }
+        }
+        return hints
+    }
+
+    fileprivate nonisolated static func categoryHints(from image: CGImage) -> [GarmentCategory: Float] {
+        let request = VNClassifyImageRequest()
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        guard (try? handler.perform([request])) != nil else { return [:] }
+        let classifications = (request.results ?? []).prefix(20).map {
+            (identifier: $0.identifier, confidence: $0.confidence)
+        }
+        return categoryHints(from: classifications)
+    }
+
     fileprivate nonisolated static func analyzeOnDevice(
         photoData: Data,
         wardrobe: [GarmentSnapshot],
@@ -198,12 +249,13 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         guard let outfitImage = downsampledImage(from: photoData) else {
             throw OutfitAnalysisError.invalidOutfitPhoto
         }
+        let bodyBounds = fullBodyBounds(from: outfitImage)
 
         var comparedImageCount = 0
         let groups = try DemoOutfitAnalyzer.preferredOrder.compactMap { category -> DetectedGarmentGroup? in
             let categoryGarments = wardrobe.filter { $0.category == category }
             guard !categoryGarments.isEmpty,
-                  let outfitRegion = crop(outfitImage, for: category) else {
+                  let outfitRegion = crop(outfitImage, for: category, bodyBounds: bodyBounds) else {
                 return nil
             }
             let outfitPrint = try featurePrint(for: outfitRegion)
@@ -278,23 +330,91 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
+    /// Returns a normalized top-left-origin rectangle only when a person's head
+    /// and at least one ankle are visible. Partial poses keep the legacy frame
+    /// regions instead of pretending their truncated bounds describe a full body.
+    fileprivate nonisolated static func fullBodyBounds(from image: CGImage) -> CGRect? {
+        let request = VNDetectHumanBodyPoseRequest()
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        guard (try? handler.perform([request])) != nil else { return nil }
+
+        return (request.results ?? []).compactMap { observation -> CGRect? in
+            guard let nose = try? observation.recognizedPoint(.nose), nose.confidence >= 0.2 else {
+                return nil
+            }
+            let ankles = [
+                try? observation.recognizedPoint(.leftAnkle),
+                try? observation.recognizedPoint(.rightAnkle),
+            ].compactMap { $0 }.filter { $0.confidence >= 0.2 }
+            guard !ankles.isEmpty,
+                  let recognized = try? observation.recognizedPoints(.all) else {
+                return nil
+            }
+            let points = recognized.values
+                .filter { $0.confidence >= 0.2 }
+                .map { CGPoint(x: $0.location.x, y: 1 - $0.location.y) }
+            guard points.count >= 6 else { return nil }
+
+            let minX = points.map(\.x).min() ?? 0
+            let maxX = points.map(\.x).max() ?? 1
+            let minY = points.map(\.y).min() ?? 0
+            let maxY = points.map(\.y).max() ?? 1
+            let width = max(maxX - minX, 0.08)
+            let height = max(maxY - minY, 0.25)
+            return CGRect(
+                x: minX - width * 0.28,
+                y: minY - height * 0.08,
+                width: width * 1.56,
+                height: height * 1.14
+            ).intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        }.max { $0.width * $0.height < $1.width * $1.height }
+    }
+
+    nonisolated static func normalizedCropRect(
+        for category: GarmentCategory,
+        bodyBounds: CGRect?
+    ) -> CGRect {
+        guard let bodyBounds, !bodyBounds.isEmpty else {
+            return switch category {
+            case .hat: CGRect(x: 0.12, y: 0.00, width: 0.76, height: 0.28)
+            case .outer, .top, .dress: CGRect(x: 0.06, y: 0.08, width: 0.88, height: 0.58)
+            case .bottom: CGRect(x: 0.10, y: 0.38, width: 0.80, height: 0.52)
+            case .shoes: CGRect(x: 0.08, y: 0.70, width: 0.84, height: 0.30)
+            case .bag, .accessory: CGRect(x: 0.04, y: 0.08, width: 0.92, height: 0.76)
+            }
+        }
+
+        let relative: CGRect = switch category {
+        case .hat:
+            CGRect(x: 0.16, y: 0.00, width: 0.68, height: 0.22)
+        case .outer, .top:
+            CGRect(x: -0.08, y: 0.14, width: 1.16, height: 0.40)
+        case .dress:
+            CGRect(x: -0.08, y: 0.14, width: 1.16, height: 0.66)
+        case .bottom:
+            CGRect(x: 0.00, y: 0.46, width: 1.00, height: 0.40)
+        case .shoes:
+            CGRect(x: -0.08, y: 0.82, width: 1.16, height: 0.18)
+        case .bag:
+            CGRect(x: -0.32, y: 0.18, width: 1.64, height: 0.58)
+        case .accessory:
+            CGRect(x: -0.16, y: 0.06, width: 1.32, height: 0.52)
+        }
+        return CGRect(
+            x: bodyBounds.minX + relative.minX * bodyBounds.width,
+            y: bodyBounds.minY + relative.minY * bodyBounds.height,
+            width: relative.width * bodyBounds.width,
+            height: relative.height * bodyBounds.height
+        ).intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     private nonisolated static func crop(
         _ image: CGImage,
-        for category: GarmentCategory
+        for category: GarmentCategory,
+        bodyBounds: CGRect?
     ) -> CGImage? {
         // CGImage pixel coordinates start at the top-left corner.
-        let normalizedRect: CGRect = switch category {
-        case .hat:
-            CGRect(x: 0.12, y: 0.00, width: 0.76, height: 0.28)
-        case .outer, .top, .dress:
-            CGRect(x: 0.06, y: 0.08, width: 0.88, height: 0.58)
-        case .bottom:
-            CGRect(x: 0.10, y: 0.38, width: 0.80, height: 0.52)
-        case .shoes:
-            CGRect(x: 0.08, y: 0.70, width: 0.84, height: 0.30)
-        case .bag, .accessory:
-            CGRect(x: 0.04, y: 0.08, width: 0.92, height: 0.76)
-        }
+        let normalizedRect = normalizedCropRect(for: category, bodyBounds: bodyBounds)
         let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let pixelRect = CGRect(
             x: normalizedRect.minX * bounds.width,
@@ -382,6 +502,10 @@ private actor DeviceVisionEngine {
     func analyze(photoData: Data, wardrobe: [GarmentSnapshot]) throws -> VisionAnalysisReport {
         var hits = 0
         var generated = 0
+        guard let outfitImage = DeviceOutfitAnalyzer.downsampledImage(from: photoData) else {
+            throw OutfitAnalysisError.invalidOutfitPhoto
+        }
+        let categoryHints = DeviceOutfitAnalyzer.categoryHints(from: outfitImage)
         let comparedGroups = try DeviceOutfitAnalyzer.analyzeOnDevice(
             photoData: photoData, wardrobe: wardrobe
         ) { data in
@@ -399,7 +523,10 @@ private actor DeviceVisionEngine {
             cache.insert(observation, for: key, cost: observation.data.count)
             return observation
         }
-        let groups = DeviceOutfitAnalyzer.likelyPresentGroups(from: comparedGroups)
+        let groups = DeviceOutfitAnalyzer.likelyPresentGroups(
+            from: comparedGroups,
+            categoryHints: categoryHints
+        )
         return VisionAnalysisReport(groups: groups, performance: VisionAnalysisPerformance(
             cacheHits: hits, generatedPrints: generated,
             cachedPrints: cache.count, cachedPayloadBytes: cache.payloadBytes

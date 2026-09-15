@@ -208,10 +208,11 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
 
         let guideLabel = UILabel()
         guideLabel.translatesAutoresizingMaskIntoConstraints = false
-        guideLabel.text = "전신이 프레임 안에 들어오게 서주세요"
+        guideLabel.text = "머리 끝부터 발끝까지 모두 담아주세요\n모자와 가방도 몸에 착용해 주세요"
         guideLabel.font = .preferredFont(forTextStyle: .subheadline)
         guideLabel.textColor = .white
         guideLabel.textAlignment = .center
+        guideLabel.numberOfLines = 2
         guideLabel.layer.shadowColor = UIColor.black.cgColor
         guideLabel.layer.shadowOpacity = 1
         guideLabel.layer.shadowRadius = 1
@@ -229,6 +230,8 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
             guide.bottomAnchor.constraint(equalTo: guideLabel.topAnchor, constant: -14),
 
             guideLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            guideLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
+            guideLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
             guideLabel.bottomAnchor.constraint(equalTo: zoomStack.topAnchor, constant: -18),
 
             zoomStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),

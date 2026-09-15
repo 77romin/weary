@@ -41,6 +41,74 @@ struct OutfitFlowTests {
         #expect(DeviceOutfitAnalyzer.likelyPresentGroups(from: [outer, top, shoes]).map(\.category) == [.shoes])
     }
 
+    @Test("전체 이미지에서 모자 단서가 강하면 위치와 무관하게 모자 후보를 복원한다")
+    func restoresHatCandidateFromWholeImageClassification() {
+        let hatID = UUID()
+        let hat = DetectedGarmentGroup(
+            category: .hat, candidateIDs: [hatID], candidateDistances: [9],
+            selectedGarmentID: nil, confidence: .none, source: .vision
+        )
+        let top = DetectedGarmentGroup(
+            category: .top, candidateIDs: [UUID()], candidateDistances: [2],
+            selectedGarmentID: UUID(), confidence: .medium, source: .vision
+        )
+        let hints = DeviceOutfitAnalyzer.categoryHints(from: [
+            (identifier: "headgear, hat", confidence: 0.021),
+            (identifier: "jersey, T-shirt", confidence: 0.04),
+        ])
+
+        let result = DeviceOutfitAnalyzer.likelyPresentGroups(
+            from: [hat, top],
+            categoryHints: hints
+        )
+
+        #expect(result.map(\.category) == [.hat])
+        #expect(result.first?.selectedGarmentID == hatID)
+    }
+
+    @Test("분류 단어는 부분 문자열이 아닌 단어 단위로 의류 카테고리에 연결한다")
+    func mapsClassificationIdentifiersToGarmentCategories() {
+        let hints = DeviceOutfitAnalyzer.categoryHints(from: [
+            (identifier: "cowboy hat, ten-gallon hat", confidence: 0.64),
+            (identifier: "hatchet", confidence: 0.91),
+            (identifier: "running shoe", confidence: 0.31),
+        ])
+
+        #expect(hints[.hat] == 0.64)
+        #expect(hints[.shoes] == 0.31)
+    }
+
+    @Test("전신 위치가 있으면 각 옷 영역을 사람 기준으로 계산한다")
+    func calculatesGarmentRegionsRelativeToBody() {
+        let body = CGRect(x: 0.30, y: 0.05, width: 0.40, height: 0.90)
+        let hat = DeviceOutfitAnalyzer.normalizedCropRect(for: .hat, bodyBounds: body)
+        let top = DeviceOutfitAnalyzer.normalizedCropRect(for: .top, bodyBounds: body)
+        let bottom = DeviceOutfitAnalyzer.normalizedCropRect(for: .bottom, bodyBounds: body)
+        let shoes = DeviceOutfitAnalyzer.normalizedCropRect(for: .shoes, bodyBounds: body)
+        let bag = DeviceOutfitAnalyzer.normalizedCropRect(for: .bag, bodyBounds: body)
+
+        #expect(hat.maxY < top.maxY)
+        #expect(top.midY < bottom.midY)
+        #expect(bottom.midY < shoes.midY)
+        #expect(bag.minX < body.minX)
+        #expect(bag.maxX > body.maxX)
+        #expect([hat, top, bottom, shoes, bag].allSatisfy {
+            CGRect(x: 0, y: 0, width: 1, height: 1).contains($0)
+        })
+    }
+
+    @Test("사람 포즈가 없으면 기존 프레임 기준 영역을 사용한다")
+    func fallsBackToFrameRegionsWithoutBodyPose() {
+        #expect(
+            DeviceOutfitAnalyzer.normalizedCropRect(for: .hat, bodyBounds: nil)
+                == CGRect(x: 0.12, y: 0, width: 0.76, height: 0.28)
+        )
+        #expect(
+            DeviceOutfitAnalyzer.normalizedCropRect(for: .shoes, bodyBounds: nil)
+                == CGRect(x: 0.08, y: 0.70, width: 0.84, height: 0.30)
+        )
+    }
+
     @Test("매물 RPC는 선택 정보가 없어도 필수 nullable 인자를 null로 전송한다")
     func marketRPCEncodesExplicitNullArguments() throws {
         let parameters = MarketReplaceParameters(
