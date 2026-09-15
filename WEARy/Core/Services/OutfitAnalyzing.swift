@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+import CryptoKit
 import ImageIO
 import Vision
 
@@ -112,32 +114,39 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         wardrobe: [GarmentSnapshot]
     ) async throws -> [DetectedGarmentGroup] {
         guard !wardrobe.isEmpty else { throw OutfitAnalysisError.emptyWardrobe }
+        let started = ContinuousClock.now
         guard let photoData else {
-            return try await fallback.analyze(photoData: nil, wardrobe: wardrobe)
+            let groups = try await fallback.analyze(photoData: nil, wardrobe: wardrobe)
+            OutfitAnalysisDiagnostics.shared.record(started: started, performance: nil)
+            return groups
         }
 
         do {
-            return try await Task.detached(priority: .userInitiated) {
+            let report = try await Task.detached(priority: .userInitiated) {
                 do {
-                    return try Self.analyzeOnDevice(photoData: photoData, wardrobe: wardrobe)
+                    return try await DeviceVisionEngine.shared.analyze(photoData: photoData, wardrobe: wardrobe)
                 } catch {
                     try Task.checkCancellation()
                     try await Task.sleep(for: .milliseconds(150))
                 }
 
                 do {
-                    return try Self.analyzeOnDevice(photoData: photoData, wardrobe: wardrobe)
+                    return try await DeviceVisionEngine.shared.analyze(photoData: photoData, wardrobe: wardrobe)
                 } catch {
                     try Task.checkCancellation()
                     try await Task.sleep(for: .milliseconds(300))
                 }
 
-                return try Self.analyzeOnDevice(photoData: photoData, wardrobe: wardrobe)
+                return try await DeviceVisionEngine.shared.analyze(photoData: photoData, wardrobe: wardrobe)
             }.value
+            OutfitAnalysisDiagnostics.shared.record(started: started, performance: report.performance)
+            return report.groups
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            return try await fallback.analyze(photoData: photoData, wardrobe: wardrobe)
+            let groups = try await fallback.analyze(photoData: photoData, wardrobe: wardrobe)
+            OutfitAnalysisDiagnostics.shared.record(started: started, performance: nil)
+            return groups
         }
     }
 
@@ -154,9 +163,10 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         return Array((ranked + fallbackIDs.filter { !ranked.contains($0) }).prefix(3))
     }
 
-    private nonisolated static func analyzeOnDevice(
+    fileprivate nonisolated static func analyzeOnDevice(
         photoData: Data,
-        wardrobe: [GarmentSnapshot]
+        wardrobe: [GarmentSnapshot],
+        garmentFeaturePrint: (Data) throws -> VNFeaturePrintObservation
     ) throws -> [DetectedGarmentGroup] {
         guard let outfitImage = downsampledImage(from: photoData) else {
             throw OutfitAnalysisError.invalidOutfitPhoto
@@ -173,8 +183,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
 
             let distances: [(id: UUID, distance: Float)] = categoryGarments.compactMap { garment in
                 guard let data = garment.cutoutImageData ?? garment.imageData,
-                      let garmentImage = downsampledImage(from: data),
-                      let garmentPrint = try? featurePrint(for: garmentImage) else {
+                      let garmentPrint = try? garmentFeaturePrint(data) else {
                     return nil
                 }
                 var distance: Float = 0
@@ -216,7 +225,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         return groups
     }
 
-    private nonisolated static func featurePrint(
+    fileprivate nonisolated static func featurePrint(
         for image: CGImage
     ) throws -> VNFeaturePrintObservation {
         let request = VNGenerateImageFeaturePrintRequest()
@@ -228,7 +237,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         return observation
     }
 
-    private nonisolated static func downsampledImage(from data: Data) -> CGImage? {
+    fileprivate nonisolated static func downsampledImage(from data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -276,6 +285,106 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
             return .medium
         }
         return second > best * 1.25 ? .high : .medium
+    }
+}
+
+/// Actor-owned LRU cache. Costs count feature payload bytes, not process memory.
+struct FeaturePrintCache<Value> {
+    private var entries: [String: (value: Value, cost: Int)] = [:]
+    private var order: [String] = []
+    let maximumCount: Int
+    let maximumBytes: Int
+    private(set) var payloadBytes = 0
+    var count: Int { entries.count }
+
+    init(maximumCount: Int, maximumBytes: Int) {
+        self.maximumCount = max(0, maximumCount)
+        self.maximumBytes = max(0, maximumBytes)
+    }
+
+    mutating func value(for key: String) -> Value? {
+        guard let entry = entries[key] else { return nil }
+        order.removeAll { $0 == key }
+        order.append(key)
+        return entry.value
+    }
+
+    mutating func insert(_ value: Value, for key: String, cost: Int) {
+        if let old = entries.removeValue(forKey: key) { payloadBytes -= old.cost }
+        order.removeAll { $0 == key }
+        guard maximumCount > 0, cost >= 0, cost <= maximumBytes else { return }
+        while entries.count >= maximumCount || payloadBytes + cost > maximumBytes {
+            guard let oldest = order.first else { break }
+            order.removeFirst()
+            if let old = entries.removeValue(forKey: oldest) { payloadBytes -= old.cost }
+        }
+        entries[key] = (value, cost)
+        order.append(key)
+        payloadBytes += cost
+    }
+
+    static func imageKey(_ data: Data) -> String {
+        "vision-\(VNGenerateImageFeaturePrintRequest.defaultRevision)-1024-" +
+            SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+struct VisionAnalysisPerformance: Sendable {
+    let cacheHits: Int
+    let generatedPrints: Int
+    let cachedPrints: Int
+    let cachedPayloadBytes: Int
+}
+
+struct VisionAnalysisReport: Sendable {
+    let groups: [DetectedGarmentGroup]
+    let performance: VisionAnalysisPerformance
+}
+
+/// Vision observations stay on one actor; they are never shared across workers.
+private actor DeviceVisionEngine {
+    static let shared = DeviceVisionEngine()
+    private var cache = FeaturePrintCache<VNFeaturePrintObservation>(
+        maximumCount: 128, maximumBytes: 4 * 1_024 * 1_024
+    )
+
+    func analyze(photoData: Data, wardrobe: [GarmentSnapshot]) throws -> VisionAnalysisReport {
+        var hits = 0
+        var generated = 0
+        let groups = try DeviceOutfitAnalyzer.analyzeOnDevice(
+            photoData: photoData, wardrobe: wardrobe
+        ) { data in
+            try Task.checkCancellation()
+            let key = FeaturePrintCache<VNFeaturePrintObservation>.imageKey(data)
+            if let observation = cache.value(for: key) {
+                hits += 1
+                return observation
+            }
+            guard let image = DeviceOutfitAnalyzer.downsampledImage(from: data) else {
+                throw OutfitAnalysisError.noComparableGarmentImages
+            }
+            let observation = try DeviceOutfitAnalyzer.featurePrint(for: image)
+            generated += 1
+            cache.insert(observation, for: key, cost: observation.data.count)
+            return observation
+        }
+        return VisionAnalysisReport(groups: groups, performance: VisionAnalysisPerformance(
+            cacheHits: hits, generatedPrints: generated,
+            cachedPrints: cache.count, cachedPayloadBytes: cache.payloadBytes
+        ))
+    }
+}
+
+@MainActor
+final class OutfitAnalysisDiagnostics: ObservableObject {
+    static let shared = OutfitAnalysisDiagnostics()
+    @Published private(set) var elapsedMilliseconds: Double?
+    @Published private(set) var performance: VisionAnalysisPerformance?
+
+    func record(started: ContinuousClock.Instant, performance: VisionAnalysisPerformance?) {
+        let duration = started.duration(to: .now).components
+        elapsedMilliseconds = Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15
+        self.performance = performance
     }
 }
 

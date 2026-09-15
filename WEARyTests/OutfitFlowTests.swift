@@ -87,6 +87,53 @@ struct OutfitFlowTests {
         }
     }
 
+    @Test("특징값 캐시는 최근 사용한 항목을 보존하고 개수 한도를 지킨다")
+    func featureCacheEvictsLeastRecentlyUsed() {
+        var cache = FeaturePrintCache<Int>(maximumCount: 2, maximumBytes: 100)
+        cache.insert(1, for: "a", cost: 10)
+        cache.insert(2, for: "b", cost: 10)
+        #expect(cache.value(for: "a") == 1)
+        cache.insert(3, for: "c", cost: 10)
+        #expect(cache.value(for: "b") == nil)
+        #expect(cache.value(for: "a") == 1)
+        #expect(cache.count == 2)
+        #expect(cache.payloadBytes == 20)
+    }
+
+    @Test("특징값 캐시는 용량 한도와 교체 비용을 반영한다")
+    func featureCacheBoundsPayloadBytes() {
+        var cache = FeaturePrintCache<Int>(maximumCount: 128, maximumBytes: 20)
+        cache.insert(1, for: "a", cost: 10)
+        cache.insert(2, for: "a", cost: 5)
+        #expect(cache.payloadBytes == 5)
+        cache.insert(3, for: "b", cost: 20)
+        #expect(cache.value(for: "a") == nil)
+        #expect(cache.payloadBytes == 20)
+        cache.insert(4, for: "oversized", cost: 21)
+        #expect(cache.value(for: "oversized") == nil)
+        #expect(cache.count == 1)
+    }
+
+    @Test("사진 내용이 바뀌면 특징값 캐시 키도 바뀐다")
+    func featureCacheKeysTrackImageContent() {
+        let original = Data([1, 2, 3])
+        #expect(FeaturePrintCache<Int>.imageKey(original) == FeaturePrintCache<Int>.imageKey(original))
+        #expect(FeaturePrintCache<Int>.imageKey(original) != FeaturePrintCache<Int>.imageKey(Data([1, 2, 4])))
+    }
+
+    @Test("분석 진단은 실행 시간을 기록하고 fallback의 이전 캐시 수치를 지운다")
+    @MainActor
+    func analysisDiagnosticsDistinguishFallback() {
+        let diagnostics = OutfitAnalysisDiagnostics()
+        diagnostics.record(started: .now, performance: VisionAnalysisPerformance(
+            cacheHits: 2, generatedPrints: 1, cachedPrints: 3, cachedPayloadBytes: 100
+        ))
+        #expect(diagnostics.performance?.cacheHits == 2)
+        #expect((diagnostics.elapsedMilliseconds ?? -1) >= 0)
+        diagnostics.record(started: .now, performance: nil)
+        #expect(diagnostics.performance == nil)
+    }
+
     @Test("Vision 후보는 특징 거리가 가까운 순서로 최대 세 개를 고른다")
     func deviceAnalyzerRanksNearestCandidates() {
         let first = UUID()

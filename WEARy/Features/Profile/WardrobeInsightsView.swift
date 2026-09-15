@@ -90,6 +90,7 @@ struct WardrobeInsightsView: View {
 
 struct AIRecommendationInsightsView: View {
     let summary: AIRecommendationSummary
+    @ObservedObject private var diagnostics = OutfitAnalysisDiagnostics.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -102,6 +103,17 @@ struct AIRecommendationInsightsView: View {
                     .foregroundStyle(WEARyTheme.secondaryInk)
             }
 
+            if let elapsed = diagnostics.elapsedMilliseconds {
+                Text("최근 분석 \(elapsed.formatted(.number.precision(.fractionLength(0))))ms · \(diagnostics.performance == nil ? "기본 후보 전환" : "Vision 비교")")
+                    .font(.caption)
+                if let performance = diagnostics.performance {
+                    Text("마지막 Vision 시도: 재사용 \(performance.cacheHits)회 · 새 특징값 \(performance.generatedPrints)개 · 캐시 \(performance.cachedPrints)/128개")
+                        .font(.caption2)
+                    Text("특징값 데이터 \(performance.cachedPayloadBytes.formatted())바이트 / 4MB 한도 · 앱 실행 중에만 유지")
+                        .font(.caption2)
+                        .foregroundStyle(WEARyTheme.secondaryInk)
+                }
+            }
             if summary.analyzedOutfitCount == 0 {
                 Text("새 착장을 기록하면 Vision 후보를 얼마나 유지하고 수정했는지 보여드려요.")
                     .font(.subheadline)

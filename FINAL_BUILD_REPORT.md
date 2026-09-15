@@ -20,7 +20,7 @@
 
 ## 검증 결과
 
-- 2026-09-15 최신 로컬 단위 테스트 32개 전체 통과
+- 2026-09-15 캐시 작업 후 최신 로컬 단위 테스트 36개 전체 통과
 - 2026-09-15 실제 iPhone에서 Vision 비교 테스트 통과: Mock fallback 없이 `.vision` 경로 확인
 - 2026-09-15 최신 Debug 앱 빌드·설치·실행 성공, 기존 앱을 삭제하지 않고 갱신
 - 2026-09-15 최신 시뮬레이터 UI 테스트 13개 전체 통과
@@ -54,6 +54,15 @@ xcodebuild -quiet -project WEARy.xcodeproj -scheme WEARy \
   -destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' \
   -derivedDataPath /tmp/weary-quality-derived test
 ```
+
+### Vision 캐시·성능 표시 추가 검증
+
+- 2026-09-15 결과 번들: `/tmp/weary-quality-derived/Logs/Test/Test-WEARy-2026.09.15_15-05-54-+0900.xcresult` — 로컬 단위 36개 통과·실패 0개.
+- 특징값 LRU의 개수·데이터 용량 제한, 교체 비용, 사진 변경 키, fallback 시 진단 초기화를 추가 검증했다.
+- 변경 후 실기기용 Debug 빌드 성공. 앞선 전체 UI 13개 통과 결과와 이번 단위 테스트 결과는 별도 실행이다.
+- 캐시 작업 후 기록→MY 핵심 UI 1개 추가 재실행 통과: `/tmp/weary-quality-derived/Logs/Test/Test-WEARy-2026.09.15_15-08-14-+0900.xcresult`.
+- 최근 분석 시간은 재시도·fallback을 포함하며, 캐시 수치는 마지막 성공 Vision 시도만 집계한다. fallback에서는 이전 캐시 진단을 보여주지 않는다. 캐시 데이터 바이트 수는 프로세스 전체 메모리가 아니다.
+- 실기기 반복 분석 속도·최대 메모리, 실제 정답 데이터셋의 Top-1/Top-3 정확도는 후속 검증으로 남겼다.
 
 ## Release 재빌드
 
