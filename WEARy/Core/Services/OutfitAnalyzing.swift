@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CryptoKit
+import Darwin
 import ImageIO
 import Vision
 
@@ -385,6 +386,74 @@ final class OutfitAnalysisDiagnostics: ObservableObject {
         let duration = started.duration(to: .now).components
         elapsedMilliseconds = Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15
         self.performance = performance
+    }
+}
+
+struct VisionBenchmarkSample: Sendable {
+    let milliseconds: Double
+    let performance: VisionAnalysisPerformance
+    let footprintBytes: UInt64?
+}
+
+struct VisionBenchmarkResult: Sendable {
+    let cold: VisionBenchmarkSample
+    let warm: [VisionBenchmarkSample]
+    let initialFootprintBytes: UInt64?
+
+    var warmMedianMilliseconds: Double {
+        let values = warm.map(\.milliseconds).sorted()
+        guard !values.isEmpty else { return 0 }
+        let middle = values.count / 2
+        return values.count.isMultiple(of: 2)
+            ? (values[middle - 1] + values[middle]) / 2 : values[middle]
+    }
+    var maximumObservedFootprintBytes: UInt64? {
+        ([initialFootprintBytes, cold.footprintBytes] + warm.map(\.footprintBytes))
+            .compactMap { $0 }.max()
+    }
+}
+
+enum VisionCacheBenchmark {
+    /// A fresh engine isolates this comparison from the normal recording cache.
+    /// "Cold" means an empty feature cache, not a cold OS/Vision process.
+    nonisolated static func run(
+        photoData: Data, wardrobe: [GarmentSnapshot]
+    ) async throws -> VisionBenchmarkResult {
+        guard !wardrobe.isEmpty else { throw OutfitAnalysisError.emptyWardrobe }
+        let engine = DeviceVisionEngine()
+        let initial = memoryFootprintBytes()
+        let cold = try await measure(engine: engine, photoData: photoData, wardrobe: wardrobe)
+        var warm: [VisionBenchmarkSample] = []
+        for _ in 0..<3 {
+            try Task.checkCancellation()
+            warm.append(try await measure(engine: engine, photoData: photoData, wardrobe: wardrobe))
+        }
+        return VisionBenchmarkResult(cold: cold, warm: warm, initialFootprintBytes: initial)
+    }
+
+    private nonisolated static func measure(
+        engine: DeviceVisionEngine, photoData: Data, wardrobe: [GarmentSnapshot]
+    ) async throws -> VisionBenchmarkSample {
+        try Task.checkCancellation()
+        let started = ContinuousClock.now
+        // No retry or Mock fallback: failed Vision comparisons must not look like measurements.
+        let report = try await engine.analyze(photoData: photoData, wardrobe: wardrobe)
+        let duration = started.duration(to: .now).components
+        return VisionBenchmarkSample(
+            milliseconds: Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15,
+            performance: report.performance, footprintBytes: memoryFootprintBytes()
+        )
+    }
+
+    nonisolated static func memoryFootprintBytes() -> UInt64? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let status = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return status == KERN_SUCCESS ? info.phys_footprint : nil
     }
 }
 

@@ -78,6 +78,11 @@ struct OutfitFlowTests {
         #expect(group.source == .vision || group.source == .ai)
 #else
         #expect(group.source == .vision)
+        let benchmark = try await VisionCacheBenchmark.run(photoData: imageData, wardrobe: wardrobe)
+        #expect(benchmark.cold.performance.generatedPrints == 1)
+        #expect(benchmark.warm.count == 3)
+        #expect(benchmark.warm.allSatisfy { $0.performance.cacheHits == 1 && $0.performance.generatedPrints == 0 })
+        print("Vision synthetic benchmark: cold=\(benchmark.cold.milliseconds)ms warmMedian=\(benchmark.warmMedianMilliseconds)ms observedFootprint=\(benchmark.maximumObservedFootprintBytes ?? 0)bytes")
 #endif
         #expect(group.candidateIDs == [garmentID])
         if group.source == .vision && group.confidence == .none {
@@ -132,6 +137,34 @@ struct OutfitFlowTests {
         #expect((diagnostics.elapsedMilliseconds ?? -1) >= 0)
         diagnostics.record(started: .now, performance: nil)
         #expect(diagnostics.performance == nil)
+    }
+
+    @Test("성능 비교는 중앙값과 메모리 관측 표본을 정확히 집계한다")
+    func visionBenchmarkSummarizesSamples() {
+        let performance = VisionAnalysisPerformance(cacheHits: 1, generatedPrints: 0, cachedPrints: 1, cachedPayloadBytes: 100)
+        let cold = VisionBenchmarkSample(milliseconds: 20, performance: performance, footprintBytes: 100)
+        let warm = [
+            VisionBenchmarkSample(milliseconds: 9, performance: performance, footprintBytes: nil),
+            VisionBenchmarkSample(milliseconds: 3, performance: performance, footprintBytes: 150),
+            VisionBenchmarkSample(milliseconds: 6, performance: performance, footprintBytes: 110)
+        ]
+        let result = VisionBenchmarkResult(cold: cold, warm: warm, initialFootprintBytes: 120)
+        #expect(result.warmMedianMilliseconds == 6)
+        #expect(result.maximumObservedFootprintBytes == 150)
+        let even = VisionBenchmarkResult(cold: cold, warm: Array(warm.prefix(2)), initialFootprintBytes: nil)
+        #expect(even.warmMedianMilliseconds == 6)
+        if let bytes = VisionCacheBenchmark.memoryFootprintBytes() { #expect(bytes > 0) }
+    }
+
+    @Test("비교할 옷이 없으면 성능 측정값 대신 오류를 반환한다")
+    func visionBenchmarkRejectsEmptyWardrobe() async {
+        do {
+            _ = try await VisionCacheBenchmark.run(photoData: Data(), wardrobe: [])
+            Issue.record("빈 옷장 측정이 성공하면 안 된다")
+        } catch OutfitAnalysisError.emptyWardrobe {
+        } catch {
+            Issue.record("예상하지 못한 오류: \(error)")
+        }
     }
 
     @Test("Vision 후보는 특징 거리가 가까운 순서로 최대 세 개를 고른다")

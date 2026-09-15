@@ -1,4 +1,5 @@
 import Charts
+import PhotosUI
 import SwiftData
 import SwiftUI
 
@@ -91,6 +92,7 @@ struct WardrobeInsightsView: View {
 struct AIRecommendationInsightsView: View {
     let summary: AIRecommendationSummary
     @ObservedObject private var diagnostics = OutfitAnalysisDiagnostics.shared
+    @State private var showingBenchmark = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -103,6 +105,9 @@ struct AIRecommendationInsightsView: View {
                     .foregroundStyle(WEARyTheme.secondaryInk)
             }
 
+            Button("반복 분석 성능 비교") { showingBenchmark = true }
+                .font(.subheadline.weight(.semibold))
+                .accessibilityIdentifier("profile.visionBenchmark")
             if let elapsed = diagnostics.elapsedMilliseconds {
                 Text("최근 분석 \(elapsed.formatted(.number.precision(.fractionLength(0))))ms · \(diagnostics.performance == nil ? "기본 후보 전환" : "Vision 비교")")
                     .font(.caption)
@@ -137,6 +142,81 @@ struct AIRecommendationInsightsView: View {
         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 20))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("profile.aiRecommendationInsights")
+        .sheet(isPresented: $showingBenchmark) { VisionBenchmarkView() }
+    }
+}
+
+private struct VisionBenchmarkView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query private var garments: [Garment]
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var result: VisionBenchmarkResult?
+    @State private var errorMessage: String?
+    @State private var isWorking = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("착장 사진 하나로 빈 특징값 캐시 1회와 재사용 3회를 비교합니다. 사진·결과는 서버에 보내거나 저장하지 않습니다.")
+                    Text("사진이 있는 옷 중 이름·ID 순으로 최대 128개를 비교합니다. 실제 추천 정확도를 평가하는 기능은 아닙니다.")
+                        .font(.caption)
+                    PhotosPicker("착장 사진 선택하고 비교", selection: $selectedPhoto, matching: .images)
+                        .disabled(isWorking)
+                    if isWorking { ProgressView("Vision 비교 중…") }
+                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                }
+                if let result {
+                    Section("분석 시간") {
+                        LabeledContent("빈 캐시", value: milliseconds(result.cold.milliseconds))
+                        LabeledContent("재사용 3회 중앙값", value: milliseconds(result.warmMedianMilliseconds))
+                        LabeledContent("빈 캐시 새 계산", value: "\(result.cold.performance.generatedPrints)개")
+                        ForEach(Array(result.warm.enumerated()), id: \.offset) { index, sample in
+                            LabeledContent("재사용 \(index + 1)회", value: "\(milliseconds(sample.milliseconds)) · 캐시 \(sample.performance.cacheHits)회")
+                        }
+                    }
+                    Section("프로세스 메모리 관측") {
+                        if let bytes = result.maximumObservedFootprintBytes {
+                            LabeledContent("관측 최대 footprint", value: ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory))
+                        } else { Text("이 환경에서 메모리 정보를 읽지 못했어요.") }
+                        Text("시작 전과 각 분석 완료 후의 앱 전체 footprint 표본입니다. 분석 도중의 실제 최고점은 아니며 다른 화면·OS 상태의 영향을 받습니다. 빈 캐시는 OS·Vision 자체의 최초 실행을 의미하지 않습니다.")
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Vision 성능 비교")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("완료") { dismiss() } }
+            .task(id: selectedPhoto) {
+                guard let selectedPhoto else { return }
+                isWorking = true
+                result = nil
+                errorMessage = nil
+                defer { isWorking = false }
+                do {
+                    guard let data = try await selectedPhoto.loadTransferable(type: Data.self) else {
+                        throw OutfitAnalysisError.invalidOutfitPhoto
+                    }
+                    let snapshots = garments
+                        .filter { $0.cutoutImageData != nil || $0.imageData != nil }
+                        .sorted { $0.name == $1.name ? $0.id.uuidString < $1.id.uuidString : $0.name < $1.name }
+                        .prefix(128)
+                        .map { GarmentSnapshot(id: $0.id, category: $0.category, name: $0.name,
+                                               imageData: $0.imageData, cutoutImageData: $0.cutoutImageData) }
+                    let measured = try await VisionCacheBenchmark.run(photoData: data, wardrobe: snapshots)
+                    try Task.checkCancellation()
+                    result = measured
+                } catch is CancellationError {
+                    // Dismissing the sheet cancels the remaining comparisons.
+                } catch {
+                    errorMessage = "Vision 성능 비교를 완료하지 못했어요. 옷장 사진을 확인하고 실제 아이폰에서 다시 시도해 주세요."
+                }
+            }
+        }
+    }
+
+    private func milliseconds(_ value: Double) -> String {
+        "\(value.formatted(.number.precision(.fractionLength(0))))ms"
     }
 }
 

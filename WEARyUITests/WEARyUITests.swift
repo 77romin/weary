@@ -78,6 +78,17 @@ final class WEARyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["계정 제재 내역이 없어요"].exists)
     }
 
+    func testMyProvidesLocalVisionBenchmark() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["MY"].tap()
+        for _ in 0..<8 where !app.buttons["profile.visionBenchmark"].exists { app.swipeUp() }
+        XCTAssertTrue(app.buttons["profile.visionBenchmark"].waitForExistence(timeout: 3))
+        app.buttons["profile.visionBenchmark"].tap()
+        XCTAssertTrue(app.navigationBars["Vision 성능 비교"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["착장 사진 선택하고 비교"].exists)
+    }
+
     func testCommunityAndMarketTabsHaveSeedContent() throws {
         continueAfterFailure = false
         let app = launchApp()
