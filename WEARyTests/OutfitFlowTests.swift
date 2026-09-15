@@ -175,7 +175,8 @@ struct OutfitFlowTests {
         let wardrobe = [GarmentSnapshot(id: top, category: .top, name: "정답 상의"),
                         GarmentSnapshot(id: alternative, category: .top, name: "다른 상의"),
                         GarmentSnapshot(id: bottom, category: .bottom, name: "정답 하의")]
-        let groups = [DetectedGarmentGroup(category: .top, candidateIDs: [alternative, top], selectedGarmentID: alternative,
+        let groups = [DetectedGarmentGroup(category: .top, candidateIDs: [alternative, top],
+                                           candidateDistances: [2.5, 4.0], selectedGarmentID: alternative,
                                            confidence: .medium, source: .vision),
                       DetectedGarmentGroup(category: .bottom, candidateIDs: [bottom], selectedGarmentID: bottom,
                                            confidence: .high, source: .ai)]
@@ -184,6 +185,10 @@ struct OutfitFlowTests {
         #expect(result.topOneHits == 0)
         #expect(result.topThreeHits == 1)
         #expect(result.visionCoveredCount == 1)
+        #expect(result.distanceCoveredCount == 1)
+        #expect(result.autoSelectedCount == 1)
+        #expect(result.autoSelectionCorrectCount == 0)
+        #expect(result.scores.first { $0.garmentID == top }?.candidateDistances == [2.5, 4.0])
     }
 
     @Test("평가 후보는 같은 카테고리의 옷만 중복 없이 집계한다")
@@ -192,11 +197,14 @@ struct OutfitFlowTests {
         let wardrobe = [GarmentSnapshot(id: truth, category: .top, name: "상의"),
                         GarmentSnapshot(id: bottom, category: .bottom, name: "하의")]
         let groups = [DetectedGarmentGroup(category: .top, candidateIDs: [unknown, bottom, truth, truth],
+                                           candidateDistances: [0.5, 1, 2, nil],
                                            selectedGarmentID: nil, confidence: .none, source: .vision)]
         let result = try OutfitEvaluation.evaluate(groundTruthIDs: [truth], wardrobe: wardrobe, groups: groups)
         #expect(result.scores.first?.candidateIDs == [truth])
+        #expect(result.scores.first?.candidateDistances == [2])
         #expect(result.topOneHits == 1)
         #expect(result.topThreeHits == 1)
+        #expect(result.autoSelectedCount == 0)
     }
 
     @Test("빈 정답이나 옷장에 없는 정답은 평가하지 않는다")
@@ -233,6 +241,28 @@ struct OutfitFlowTests {
         session.append(last, photoKey: "same-photo")
         session.append(OutfitEvaluationResult(id: UUID(), evaluatedAt: .now, analyzerVersion: "test", scores: [score]), photoKey: "same-photo")
         #expect(session.results.count == 1)
+    }
+
+    @Test("신뢰도 보정 요약은 거리 중앙값과 최소 표본 조건을 계산한다")
+    func confidenceCalibrationSummarizesDistances() {
+        let truth = UUID(), miss = UUID()
+        func result(hit: Bool, distance: Float) -> OutfitEvaluationResult {
+            let first = hit ? truth : miss
+            let score = OutfitEvaluationScore(garmentID: truth, category: "상의",
+                                               candidateIDs: [first, hit ? miss : truth],
+                                               candidateDistances: [distance, distance * 1.5],
+                                               usedVision: true, reportedConfidence: "medium")
+            return OutfitEvaluationResult(id: UUID(), evaluatedAt: .now, analyzerVersion: "test", scores: [score])
+        }
+        let small = ConfidenceCalibrationSummary.make(from: [result(hit: true, distance: 2), result(hit: false, distance: 8)])
+        #expect(small.sampleCount == 2 && !small.isReadyForExploration)
+        let enough = ConfidenceCalibrationSummary.make(from:
+            (0..<15).map { result(hit: true, distance: Float($0 + 1)) } +
+            (0..<5).map { result(hit: false, distance: Float($0 + 21)) })
+        #expect(enough.isReadyForExploration)
+        #expect(enough.medianHitDistance == 8)
+        #expect(enough.medianMissDistance == 23)
+        #expect(enough.separationSampleCount == 20)
     }
 
     @Test("Vision 후보는 특징 거리가 가까운 순서로 최대 세 개를 고른다")

@@ -31,6 +31,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
     let id: UUID
     let category: GarmentCategory
     let candidateIDs: [UUID]
+    let candidateDistances: [Float?]
     var selectedGarmentID: UUID?
     var wasManuallyAdjusted: Bool
     let confidence: MatchConfidence
@@ -40,6 +41,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
         id: UUID = UUID(),
         category: GarmentCategory,
         candidateIDs: [UUID],
+        candidateDistances: [Float?] = [],
         selectedGarmentID: UUID?,
         wasManuallyAdjusted: Bool = false,
         confidence: MatchConfidence,
@@ -48,6 +50,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
         self.id = id
         self.category = category
         self.candidateIDs = candidateIDs
+        self.candidateDistances = Array((candidateDistances + Array(repeating: nil, count: candidateIDs.count)).prefix(candidateIDs.count))
         self.selectedGarmentID = selectedGarmentID
         self.wasManuallyAdjusted = wasManuallyAdjusted
         self.confidence = confidence
@@ -191,6 +194,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
                 guard (try? outfitPrint.computeDistance(&distance, to: garmentPrint)) != nil else {
                     return nil
                 }
+                guard distance.isFinite else { return nil }
                 return (garment.id, distance)
             }
             comparedImageCount += distances.count
@@ -199,6 +203,8 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
                 distances: distances,
                 fallbackIDs: fallbackIDs
             )
+            let distanceByID = distances.reduce(into: [UUID: Float]()) { $0[$1.id] = $1.distance }
+            let candidateDistances = candidateIDs.map { distanceByID[$0] }
             guard let firstCandidateID = candidateIDs.first else { return nil }
             guard !distances.isEmpty else {
                 return DetectedGarmentGroup(
@@ -214,6 +220,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
             return DetectedGarmentGroup(
                 category: category,
                 candidateIDs: candidateIDs,
+                candidateDistances: candidateDistances,
                 selectedGarmentID: matchConfidence == .none ? nil : firstCandidateID,
                 confidence: matchConfidence,
                 source: .vision
@@ -461,9 +468,33 @@ struct OutfitEvaluationScore: Codable, Sendable {
     let garmentID: UUID
     let category: String
     let candidateIDs: [UUID]
+    let candidateDistances: [Float?]
     let usedVision: Bool
+    let reportedConfidence: String?
+
+    init(garmentID: UUID, category: String, candidateIDs: [UUID],
+         candidateDistances: [Float?] = [], usedVision: Bool,
+         reportedConfidence: String? = nil) {
+        self.garmentID = garmentID
+        self.category = category
+        self.candidateIDs = candidateIDs
+        self.candidateDistances = Array((candidateDistances + Array(repeating: nil, count: candidateIDs.count)).prefix(candidateIDs.count))
+        self.usedVision = usedVision
+        self.reportedConfidence = reportedConfidence
+    }
     var topOneHit: Bool { usedVision && candidateIDs.first == garmentID }
     var topThreeHit: Bool { usedVision && candidateIDs.prefix(3).contains(garmentID) }
+    var bestDistance: Float? { candidateDistances.first.flatMap { $0 } }
+    var separationRatio: Float? {
+        guard let best = bestDistance, best > 0,
+              candidateDistances.count > 1, let second = candidateDistances[1] else { return nil }
+        return second / best
+    }
+    var autoSelected: Bool {
+        guard usedVision, let reportedConfidence else { return false }
+        return reportedConfidence != MatchConfidence.none.rawValue
+    }
+    var autoSelectionCorrect: Bool { autoSelected && topOneHit }
 }
 
 struct OutfitEvaluationResult: Identifiable, Codable, Sendable {
@@ -474,7 +505,37 @@ struct OutfitEvaluationResult: Identifiable, Codable, Sendable {
     var topOneHits: Int { scores.filter(\.topOneHit).count }
     var topThreeHits: Int { scores.filter(\.topThreeHit).count }
     var visionCoveredCount: Int { scores.filter(\.usedVision).count }
+    var distanceCoveredCount: Int { scores.filter { $0.bestDistance != nil }.count }
+    var autoSelectedCount: Int { scores.filter(\.autoSelected).count }
+    var autoSelectionCorrectCount: Int { scores.filter(\.autoSelectionCorrect).count }
     var isValidVisionRun: Bool { visionCoveredCount > 0 }
+}
+
+struct ConfidenceCalibrationSummary: Sendable {
+    let sampleCount: Int
+    let hitCount: Int
+    let missCount: Int
+    let medianHitDistance: Float?
+    let medianMissDistance: Float?
+    let separationSampleCount: Int
+    var isReadyForExploration: Bool { sampleCount >= 20 && hitCount >= 5 && missCount >= 5 }
+
+    nonisolated static func make(from results: [OutfitEvaluationResult]) -> Self {
+        let scores = results.flatMap(\.scores).filter { $0.usedVision && $0.bestDistance != nil }
+        let hits = scores.filter(\.topOneHit).compactMap(\.bestDistance)
+        let misses = scores.filter { !$0.topOneHit }.compactMap(\.bestDistance)
+        return Self(sampleCount: scores.count, hitCount: hits.count, missCount: misses.count,
+                    medianHitDistance: median(hits), medianMissDistance: median(misses),
+                    separationSampleCount: scores.compactMap(\.separationRatio).count)
+    }
+
+    private nonisolated static func median(_ values: [Float]) -> Float? {
+        guard !values.isEmpty else { return nil }
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        return sorted.count.isMultiple(of: 2)
+            ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+    }
 }
 
 enum OutfitEvaluationError: LocalizedError {
@@ -500,12 +561,15 @@ enum OutfitEvaluation {
             let group = groups.first { $0.category == category && $0.source == .vision }
             let allowedIDs = Set(wardrobe.filter { $0.category == category }.map(\.id))
             var seen = Set<UUID>()
-            let candidates = group?.candidateIDs.filter { allowedIDs.contains($0) && seen.insert($0).inserted } ?? []
+            let pairs = zip(group?.candidateIDs ?? [], group?.candidateDistances ?? [])
+                .filter { $0.1 != nil && allowedIDs.contains($0.0) && seen.insert($0.0).inserted }
+                .prefix(3)
             return OutfitEvaluationScore(garmentID: id, category: category.rawValue,
-                                         candidateIDs: Array(candidates.prefix(3)), usedVision: group != nil)
+                                         candidateIDs: pairs.map(\.0), candidateDistances: pairs.map(\.1),
+                                         usedVision: group != nil, reportedConfidence: group?.confidence.rawValue)
         }
         return OutfitEvaluationResult(id: UUID(), evaluatedAt: .now,
-            analyzerVersion: "Vision-featureprint-\(VNGenerateImageFeaturePrintRequest.defaultRevision)-crop-v1-top3",
+            analyzerVersion: "Vision-featureprint-\(VNGenerateImageFeaturePrintRequest.defaultRevision)-crop-v1-top3-distance-v1",
             scores: scores)
     }
 }
@@ -518,6 +582,10 @@ final class OutfitEvaluationSession: ObservableObject {
     var truthCount: Int { results.reduce(0) { $0 + $1.scores.count } }
     var topOneHits: Int { results.reduce(0) { $0 + $1.topOneHits } }
     var topThreeHits: Int { results.reduce(0) { $0 + $1.topThreeHits } }
+    var distanceCoveredCount: Int { results.reduce(0) { $0 + $1.distanceCoveredCount } }
+    var autoSelectedCount: Int { results.reduce(0) { $0 + $1.autoSelectedCount } }
+    var autoSelectionCorrectCount: Int { results.reduce(0) { $0 + $1.autoSelectionCorrectCount } }
+    var calibration: ConfidenceCalibrationSummary { .make(from: results) }
 
     func append(_ result: OutfitEvaluationResult, photoKey: String? = nil) {
         guard result.isValidVisionRun, !results.contains(where: { $0.id == result.id }) else { return }

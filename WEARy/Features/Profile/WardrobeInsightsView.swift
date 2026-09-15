@@ -193,13 +193,38 @@ private struct VisionEvaluationView: View {
                         LabeledContent("정답 옷별 Top-1", value: "\(result.topOneHits)/\(result.scores.count)")
                         LabeledContent("정답 옷별 Top-3", value: "\(result.topThreeHits)/\(result.scores.count)")
                         LabeledContent("Vision 비교 범위", value: "\(result.visionCoveredCount)/\(result.scores.count)")
+                        LabeledContent("거리 수집 범위", value: "\(result.distanceCoveredCount)/\(result.scores.count)")
+                        LabeledContent("자동 선택 정확", value: "\(result.autoSelectionCorrectCount)/\(result.autoSelectedCount)")
                         Text("정답 옷이 해당 카테고리의 첫 후보·상위 3개 후보에 포함되는지 계산합니다. 비교할 Vision 후보가 없는 정답은 미적중입니다. 같은 카테고리의 여러 옷도 각각 집계합니다.")
                             .font(.caption)
+                        ForEach(result.scores, id: \.garmentID) { score in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(score.category) · \(garmentName(score.garmentID))")
+                                    .font(.subheadline.weight(.semibold))
+                                Text(scoreStatus(score))
+                                    .font(.caption)
+                                if !score.candidateIDs.isEmpty {
+                                    Text(candidateSummary(score))
+                                        .font(.caption2)
+                                        .foregroundStyle(WEARyTheme.secondaryInk)
+                                }
+                            }
+                        }
                     }
                 }
                 Section("실행 중 평가 모음 · 최근 50회") {
                     Text("\(session.results.count)회 · 정답 \(session.truthCount)개 · Top-1 \(session.topOneHits)개 · Top-3 \(session.topThreeHits)개 적중")
-                    Text("앱 종료 시 사라집니다. 같은 사진의 재평가는 최근 결과로 교체합니다. 채택률과 별도이며 정답 카테고리의 Vision 비교가 전혀 없으면 제외합니다. 얼굴 사진·옷 이름 없이 UUID·카테고리·후보·버전만 공유합니다.")
+                    Text("거리값 \(session.distanceCoveredCount)개 · 자동 선택 정확 \(session.autoSelectionCorrectCount)/\(session.autoSelectedCount)")
+                        .font(.caption)
+                    let calibration = session.calibration
+                    if calibration.isReadyForExploration {
+                        Text("보정 탐색 준비됨 · Top-1 적중 거리 중앙값 \(distance(calibration.medianHitDistance)) · 미적중 \(distance(calibration.medianMissDistance))")
+                            .font(.caption)
+                    } else {
+                        Text("신뢰도 보정 탐색까지 거리 표본 \(calibration.sampleCount)/20개 · 적중 \(calibration.hitCount)/5개 · 미적중 \(calibration.missCount)/5개")
+                            .font(.caption)
+                    }
+                    Text("앱 종료 시 사라집니다. 같은 사진의 재평가는 최근 결과로 교체합니다. 채택률과 별도이며 정답 카테고리의 Vision 비교가 전혀 없으면 제외합니다. 얼굴 사진·옷 이름 없이 UUID·카테고리·후보·거리·신뢰도·버전만 공유합니다.")
                         .font(.caption)
                     ShareLink("평가 JSON 공유", item: session.exportJSON)
                         .disabled(session.results.isEmpty)
@@ -251,6 +276,28 @@ private struct VisionEvaluationView: View {
             } catch is CancellationError {
             } catch { message = error.localizedDescription }
         }
+    }
+
+    private func distance(_ value: Float?) -> String {
+        guard let value else { return "없음" }
+        return value.formatted(.number.precision(.fractionLength(2)))
+    }
+
+    private func garmentName(_ id: UUID) -> String {
+        garments.first { $0.id == id }?.name ?? "삭제된 옷"
+    }
+
+    private func scoreStatus(_ score: OutfitEvaluationScore) -> String {
+        guard score.usedVision, !score.candidateIDs.isEmpty else { return "Vision 비교 후보 없음 · 미적중" }
+        let rank = score.candidateIDs.firstIndex(of: score.garmentID).map { $0 + 1 }
+        let result = rank.map { "Top-\($0) 적중" } ?? "Top-3 미적중"
+        return "\(result) · 신뢰도 \(score.reportedConfidence ?? "없음") · 최단 거리 \(distance(score.bestDistance))"
+    }
+
+    private func candidateSummary(_ score: OutfitEvaluationScore) -> String {
+        zip(score.candidateIDs, score.candidateDistances).enumerated().map { index, pair in
+            "\(index + 1). \(garmentName(pair.0)) (\(distance(pair.1)))"
+        }.joined(separator: " · ")
     }
 }
 
