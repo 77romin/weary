@@ -194,7 +194,7 @@ actor SupabaseMarketChatRepository {
 actor SupabaseMarketConversationRealtimeRepository {
     static let shared = SupabaseMarketConversationRealtimeRepository()
 
-    private var channel: RealtimeChannelV2?
+    private var channels: [RealtimeChannelV2] = []
     private var subscriptions: [RealtimeSubscription] = []
     private var continuation: AsyncStream<Void>.Continuation?
 
@@ -215,22 +215,26 @@ actor SupabaseMarketConversationRealtimeRepository {
             throw SupabaseServiceError.missingConfiguration
         }
         _ = try await SupabaseSessionManager.shared.authenticatedUserID()
+        try await SupabaseRealtimeSession.prepare(client)
         let (stream, continuation) = AsyncStream<Void>.makeStream(
             bufferingPolicy: .bufferingNewest(1)
         )
-        let channel = client.channel("\(channelPrefix)-\(UUID().uuidString)")
-        subscriptions = tables.map { table in
+        channels = tables.map { table in
+            client.channel("\(channelPrefix)-\(table)-\(UUID().uuidString)")
+        }
+        subscriptions = zip(channels, tables).map { channel, table in
             channel.onPostgresChange(AnyAction.self, schema: "public", table: table) { _ in
                 continuation.yield()
             }
         }
-        self.channel = channel
         self.continuation = continuation
         continuation.onTermination = { [weak self] _ in
             Task { await self?.stop() }
         }
         do {
-            try await channel.subscribeWithError()
+            for channel in channels {
+                try await channel.subscribeWithError()
+            }
             return stream
         } catch {
             await stop()
@@ -243,10 +247,12 @@ actor SupabaseMarketConversationRealtimeRepository {
         continuation = nil
         subscriptions.forEach { $0.cancel() }
         subscriptions = []
-        if let channel, let client = SupabaseService.client {
-            await client.removeChannel(channel)
+        if let client = SupabaseService.client {
+            for channel in channels {
+                await client.removeChannel(channel)
+            }
         }
-        channel = nil
+        channels = []
     }
 }
 
@@ -263,6 +269,7 @@ actor SupabaseMarketMessageRealtimeRepository {
             throw SupabaseServiceError.missingConfiguration
         }
         _ = try await SupabaseSessionManager.shared.authenticatedUserID()
+        try await SupabaseRealtimeSession.prepare(client)
         let (stream, continuation) = AsyncStream<Void>.makeStream(
             bufferingPolicy: .bufferingNewest(1)
         )

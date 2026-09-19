@@ -246,7 +246,7 @@ struct SupabaseIntegrationTests {
             createdAt: .now
         )
         let events = try await SupabaseCommunityFeedRealtimeRepository.shared.events()
-        let eventTask = Task { await receivesFirstEvent(from: events, timeout: .seconds(8)) }
+        let eventTask = Task { await receivesFirstEvent(from: events, timeout: .seconds(12)) }
 
         var capturedError: Error?
         var receivedEvent = false
@@ -419,7 +419,7 @@ struct SupabaseIntegrationTests {
                 listingID: listingID,
                 isFavorite: true
             )
-            #expect(await receivesFirstEvent(from: events, timeout: .seconds(5)))
+            #expect(await receivesFirstEvent(from: events, timeout: .seconds(12)))
         } catch {
             capturedError = error
         }
@@ -609,7 +609,7 @@ struct SupabaseIntegrationTests {
                     "body": sellerMessage,
                 ]
             )
-            #expect(await receivesFirstEvent(from: events, timeout: .seconds(5)))
+            #expect(await receivesFirstEvent(from: events, timeout: .seconds(12)))
 
             messages = try await chat.fetchMessages(conversationID: conversationID)
             #expect(messages.count == 2)

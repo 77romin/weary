@@ -35,6 +35,16 @@ enum SupabaseStoragePath {
     }
 }
 
+enum SupabaseRealtimeSession {
+    /// Auth state propagation inside supabase-swift is asynchronous. Resolve the
+    /// current session and push its JWT before joining a channel so Realtime RLS
+    /// never evaluates a newly signed-in user with the publishable key instead.
+    static func prepare(_ client: SupabaseClient) async throws {
+        let session = try await client.auth.session
+        await client.realtimeV2.setAuth(session.accessToken)
+    }
+}
+
 actor SupabaseSessionManager {
     static let shared = SupabaseSessionManager()
 
