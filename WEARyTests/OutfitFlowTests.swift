@@ -7,6 +7,27 @@ import UIKit
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("착장 사진 품질 검사는 사람·머리·발 노출을 구분한다")
+    func evaluatesFullBodyPhotoQuality() {
+        let missingPerson = OutfitPhotoQualityAssessment.evaluate(
+            personDetected: false, headVisible: false, feetVisible: false
+        )
+        #expect(missingPerson.issues == [.personNotFound])
+        #expect(!missingPerson.isSuitable)
+
+        let cropped = OutfitPhotoQualityAssessment.evaluate(
+            personDetected: true, headVisible: true, feetVisible: false
+        )
+        #expect(cropped.issues == [.feetNotVisible])
+        #expect(cropped.warningMessage.contains("발"))
+
+        let fullBody = OutfitPhotoQualityAssessment.evaluate(
+            personDetected: true, headVisible: true, feetVisible: true
+        )
+        #expect(fullBody.isSuitable)
+        #expect(fullBody.issues.isEmpty)
+    }
+
     @Test("Supabase 이미지 경로의 UUID는 RLS 비교와 같은 소문자를 사용한다")
     func supabaseStoragePathsNormalizeUUIDCase() throws {
         let ownerID = try #require(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))

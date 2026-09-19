@@ -17,6 +17,9 @@ struct CaptureView: View {
     @State private var phase: Phase = .ready
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var isSamplePhoto = false
+    @State private var isCheckingPhotoQuality = false
+    @State private var photoQualityWarning: OutfitPhotoQualityAssessment?
     @State private var cameraReadiness: CameraReadiness = .checking
     @State private var cameraMessage: String?
     @State private var wornAt = Date.now
@@ -30,6 +33,7 @@ struct CaptureView: View {
     @State private var publishFailureMessage: String?
 
     private let analyzer: any OutfitAnalyzing = DeviceOutfitAnalyzer()
+    private let photoQualityChecker = DeviceOutfitPhotoQualityChecker()
 
     var body: some View {
         NavigationStack {
@@ -66,6 +70,7 @@ struct CaptureView: View {
                             phase = .failed("선택한 사진을 불러올 수 없어요. 다른 사진을 선택해 주세요.")
                             return
                         }
+                        isSamplePhoto = false
                         photoData = data
                         phase = .preview
                     } catch {
@@ -164,6 +169,7 @@ struct CaptureView: View {
                             .padding(.vertical, 10)
                     }
                     Button {
+                        isSamplePhoto = true
                         photoData = UIImage(named: "DemoOutfitLeather")?.jpegData(compressionQuality: 0.84)
                         phase = .preview
                     } label: {
@@ -187,10 +193,23 @@ struct CaptureView: View {
         CapturedOutfitPreview(
             photoData: photoData,
             wornAt: $wornAt,
+            isCheckingPhotoQuality: isCheckingPhotoQuality,
             onReset: reset,
-            onAnalyze: { Task { await analyze() } }
+            onAnalyze: { Task { await checkPhotoQualityAndAnalyze() } }
         )
         .ignoresSafeArea(edges: .top)
+        .alert("전신 사진을 확인해 주세요", isPresented: Binding(
+            get: { photoQualityWarning != nil },
+            set: { if !$0 { photoQualityWarning = nil } }
+        )) {
+            Button("다시 촬영", role: .cancel) { reset() }
+            Button("그대로 분석") {
+                photoQualityWarning = nil
+                Task { await analyze() }
+            }
+        } message: {
+            Text(photoQualityWarning?.warningMessage ?? "")
+        }
     }
 
     private var analyzingView: some View {
@@ -360,6 +379,26 @@ struct CaptureView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(WEARyTheme.lime)
                 .foregroundStyle(WEARyTheme.ink)
+        }
+    }
+
+    @MainActor
+    private func checkPhotoQualityAndAnalyze() async {
+        guard !isCheckingPhotoQuality else { return }
+        guard !isSamplePhoto, let photoData else {
+            await analyze()
+            return
+        }
+
+        isCheckingPhotoQuality = true
+        let assessment = await photoQualityChecker.assess(photoData: photoData)
+        isCheckingPhotoQuality = false
+        guard phase == .preview, self.photoData == photoData else { return }
+
+        if assessment.isSuitable {
+            await analyze()
+        } else {
+            photoQualityWarning = assessment
         }
     }
 
@@ -576,6 +615,7 @@ struct CaptureView: View {
 
     private func acceptPhoto(_ data: Data) {
         selectedPhoto = nil
+        isSamplePhoto = false
         photoData = data
         phase = .preview
     }
@@ -583,6 +623,9 @@ struct CaptureView: View {
     private func reset() {
         selectedPhoto = nil
         photoData = nil
+        isSamplePhoto = false
+        isCheckingPhotoQuality = false
+        photoQualityWarning = nil
         cameraMessage = nil
         wornAt = .now
         groups = []
@@ -623,6 +666,7 @@ private struct OutfitPhotoPreview: View {
 private struct CapturedOutfitPreview: View {
     let photoData: Data?
     @Binding var wornAt: Date
+    let isCheckingPhotoQuality: Bool
     let onReset: () -> Void
     let onAnalyze: () -> Void
 
@@ -668,9 +712,19 @@ private struct CapturedOutfitPreview: View {
                                 .foregroundStyle(.white)
                                 .lightTextOutline()
                             Button(action: onAnalyze) {
-                                Label("내 옷장에서 찾기", systemImage: "sparkles")
-                                    .primaryCaptureButtonStyle()
+                                Group {
+                                    if isCheckingPhotoQuality {
+                                        HStack(spacing: 10) {
+                                            ProgressView().tint(WEARyTheme.ink)
+                                            Text("전신 확인 중")
+                                        }
+                                    } else {
+                                        Label("내 옷장에서 찾기", systemImage: "sparkles")
+                                    }
+                                }
+                                .primaryCaptureButtonStyle()
                             }
+                            .disabled(isCheckingPhotoQuality)
                             .accessibilityIdentifier("capture.analyze")
                         }
                         .padding(18)
