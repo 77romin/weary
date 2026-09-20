@@ -394,6 +394,7 @@ struct CaptureView: View {
         let assessment = await photoQualityChecker.assess(photoData: photoData)
         isCheckingPhotoQuality = false
         guard phase == .preview, self.photoData == photoData else { return }
+        OutfitPhotoQualityDiagnostics.shared.record(assessment)
 
         if assessment.isSuitable {
             await analyze()

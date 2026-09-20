@@ -110,6 +110,63 @@ struct OutfitPhotoQualityAssessment: Equatable, Sendable {
     }
 }
 
+struct OutfitPhotoQualitySummary: Codable, Equatable, Sendable {
+    var totalChecks = 0
+    var suitablePhotos = 0
+    var personNotFound = 0
+    var headNotVisible = 0
+    var feetNotVisible = 0
+
+    var warningCount: Int { max(0, totalChecks - suitablePhotos) }
+
+    var passRate: Int {
+        guard totalChecks > 0 else { return 0 }
+        return Int((Double(suitablePhotos) / Double(totalChecks) * 100).rounded())
+    }
+}
+
+@MainActor
+final class OutfitPhotoQualityDiagnostics: ObservableObject {
+    static let shared = OutfitPhotoQualityDiagnostics()
+
+    @Published private(set) var summary: OutfitPhotoQualitySummary
+    private let defaults: UserDefaults
+    private let storageKey: String
+
+    init(
+        defaults: UserDefaults = .standard,
+        storageKey: String = "weary.outfit-photo-quality-summary.v1"
+    ) {
+        self.defaults = defaults
+        self.storageKey = storageKey
+        if let data = defaults.data(forKey: storageKey),
+           let stored = try? JSONDecoder().decode(OutfitPhotoQualitySummary.self, from: data) {
+            summary = stored
+        } else {
+            summary = OutfitPhotoQualitySummary()
+        }
+    }
+
+    func record(_ assessment: OutfitPhotoQualityAssessment) {
+        summary.totalChecks += 1
+        if assessment.isSuitable { summary.suitablePhotos += 1 }
+        if assessment.issues.contains(.personNotFound) { summary.personNotFound += 1 }
+        if assessment.issues.contains(.headNotVisible) { summary.headNotVisible += 1 }
+        if assessment.issues.contains(.feetNotVisible) { summary.feetNotVisible += 1 }
+        persist()
+    }
+
+    func reset() {
+        summary = OutfitPhotoQualitySummary()
+        defaults.removeObject(forKey: storageKey)
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(summary) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+}
+
 struct DeviceOutfitPhotoQualityChecker: Sendable {
     func assess(photoData: Data) async -> OutfitPhotoQualityAssessment {
         await Task.detached(priority: .userInitiated) {

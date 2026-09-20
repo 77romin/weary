@@ -92,6 +92,7 @@ struct WardrobeInsightsView: View {
 struct AIRecommendationInsightsView: View {
     let summary: AIRecommendationSummary
     @ObservedObject private var diagnostics = OutfitAnalysisDiagnostics.shared
+    @ObservedObject private var photoQuality = OutfitPhotoQualityDiagnostics.shared
     @State private var showingBenchmark = false
     @State private var showingEvaluation = false
 
@@ -122,6 +123,27 @@ struct AIRecommendationInsightsView: View {
                         .font(.caption2)
                         .foregroundStyle(WEARyTheme.secondaryInk)
                 }
+            }
+            if photoQuality.summary.totalChecks > 0 {
+                Divider()
+                Text("촬영 품질 확인 · 이 기기")
+                    .font(.subheadline.weight(.semibold))
+                HStack(spacing: 10) {
+                    MetricPill(value: "\(photoQuality.summary.totalChecks)회", label: "검사")
+                    MetricPill(value: "\(photoQuality.summary.passRate)%", label: "전신 통과")
+                    MetricPill(value: "\(photoQuality.summary.warningCount)회", label: "재촬영 권고")
+                }
+                Text("사람 미검출 \(photoQuality.summary.personNotFound)회 · 머리 누락 \(photoQuality.summary.headNotVisible)회 · 발 누락 \(photoQuality.summary.feetNotVisible)회")
+                    .font(.caption2)
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+                Text("사진이나 옷 정보 없이 판정 횟수만 이 기기에 저장해요.")
+                    .font(.caption2)
+                    .foregroundStyle(WEARyTheme.secondaryInk)
+                Button("촬영 품질 통계 초기화", role: .destructive) {
+                    photoQuality.reset()
+                }
+                .font(.caption.weight(.semibold))
+                .accessibilityIdentifier("profile.photoQuality.reset")
             }
             if summary.analyzedOutfitCount == 0 {
                 Text("새 착장을 기록하면 Vision 후보를 얼마나 유지하고 수정했는지 보여드려요.")

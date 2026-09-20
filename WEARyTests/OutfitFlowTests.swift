@@ -28,6 +28,44 @@ struct OutfitFlowTests {
         #expect(fullBody.issues.isEmpty)
     }
 
+    @Test("촬영 품질 진단은 사진 없이 판정 횟수만 기기에 누적한다")
+    @MainActor
+    func recordsPhotoQualitySummary() throws {
+        let suiteName = "OutfitPhotoQualityDiagnosticsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let diagnostics = OutfitPhotoQualityDiagnostics(
+            defaults: defaults,
+            storageKey: "summary"
+        )
+
+        diagnostics.record(.evaluate(
+            personDetected: true, headVisible: true, feetVisible: true
+        ))
+        diagnostics.record(.evaluate(
+            personDetected: true, headVisible: false, feetVisible: false
+        ))
+        diagnostics.record(.evaluate(
+            personDetected: false, headVisible: false, feetVisible: false
+        ))
+
+        #expect(diagnostics.summary.totalChecks == 3)
+        #expect(diagnostics.summary.suitablePhotos == 1)
+        #expect(diagnostics.summary.warningCount == 2)
+        #expect(diagnostics.summary.passRate == 33)
+        #expect(diagnostics.summary.personNotFound == 1)
+        #expect(diagnostics.summary.headNotVisible == 1)
+        #expect(diagnostics.summary.feetNotVisible == 1)
+
+        let restored = OutfitPhotoQualityDiagnostics(
+            defaults: defaults,
+            storageKey: "summary"
+        )
+        #expect(restored.summary == diagnostics.summary)
+        diagnostics.reset()
+        #expect(diagnostics.summary == OutfitPhotoQualitySummary())
+    }
+
     @Test("Supabase 이미지 경로의 UUID는 RLS 비교와 같은 소문자를 사용한다")
     func supabaseStoragePathsNormalizeUUIDCase() throws {
         let ownerID = try #require(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
