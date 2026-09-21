@@ -14,18 +14,26 @@ struct OutfitFlowTests {
         )
         #expect(missingPerson.issues == [.personNotFound])
         #expect(!missingPerson.isSuitable)
+        #expect(missingPerson.liveGuidance.contains("머리 끝부터 발끝까지"))
 
         let cropped = OutfitPhotoQualityAssessment.evaluate(
             personDetected: true, headVisible: true, feetVisible: false
         )
         #expect(cropped.issues == [.feetNotVisible])
         #expect(cropped.warningMessage.contains("발"))
+        #expect(cropped.liveGuidance.contains("발끝"))
+
+        let missingHead = OutfitPhotoQualityAssessment.evaluate(
+            personDetected: true, headVisible: false, feetVisible: true
+        )
+        #expect(missingHead.liveGuidance.contains("머리"))
 
         let fullBody = OutfitPhotoQualityAssessment.evaluate(
             personDetected: true, headVisible: true, feetVisible: true
         )
         #expect(fullBody.isSuitable)
         #expect(fullBody.issues.isEmpty)
+        #expect(fullBody.liveGuidance.contains("촬영해 보세요"))
     }
 
     @Test("촬영 품질 진단은 사진 없이 판정 횟수만 기기에 누적한다")

@@ -84,6 +84,13 @@ struct OutfitPhotoQualityAssessment: Equatable, Sendable {
 
     var isSuitable: Bool { issues.isEmpty }
 
+    var liveGuidance: String {
+        if isSuitable { return "전신이 보여요 · 촬영해 보세요" }
+        if issues.contains(.personNotFound) { return "머리 끝부터 발끝까지 모두 담아주세요" }
+        if issues.contains(.headNotVisible) { return "머리가 보이도록 화면을 조정해 주세요" }
+        return "발끝까지 보이도록 한 걸음 물러나 주세요"
+    }
+
     var warningMessage: String {
         if issues.contains(.personNotFound) {
             return "사진에서 사람의 전신을 찾지 못했어요. 머리 끝부터 발끝까지 화면 안에 담아주세요."
@@ -168,6 +175,27 @@ final class OutfitPhotoQualityDiagnostics: ObservableObject {
 }
 
 struct DeviceOutfitPhotoQualityChecker: Sendable {
+    nonisolated static func assess(
+        observations: [VNHumanBodyPoseObservation]
+    ) -> OutfitPhotoQualityAssessment {
+        guard let observation = observations.max(by: {
+            visiblePointCount(in: $0) < visiblePointCount(in: $1)
+        }) else {
+            return .evaluate(personDetected: false, headVisible: false, feetVisible: false)
+        }
+
+        let nose = try? observation.recognizedPoint(.nose)
+        let ankles = [
+            try? observation.recognizedPoint(.leftAnkle),
+            try? observation.recognizedPoint(.rightAnkle),
+        ].compactMap { $0 }
+        return .evaluate(
+            personDetected: true,
+            headVisible: (nose?.confidence ?? 0) >= 0.2,
+            feetVisible: ankles.contains { $0.confidence >= 0.2 }
+        )
+    }
+
     func assess(photoData: Data) async -> OutfitPhotoQualityAssessment {
         await Task.detached(priority: .userInitiated) {
             guard let image = DeviceOutfitAnalyzer.downsampledImage(from: photoData) else {
@@ -178,25 +206,12 @@ struct DeviceOutfitPhotoQualityChecker: Sendable {
 
             let request = VNDetectHumanBodyPoseRequest()
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
-            guard (try? handler.perform([request])) != nil,
-                  let observation = request.results?.max(by: {
-                      Self.visiblePointCount(in: $0) < Self.visiblePointCount(in: $1)
-                  }) else {
+            guard (try? handler.perform([request])) != nil else {
                 return OutfitPhotoQualityAssessment.evaluate(
                     personDetected: false, headVisible: false, feetVisible: false
                 )
             }
-
-            let nose = try? observation.recognizedPoint(.nose)
-            let ankles = [
-                try? observation.recognizedPoint(.leftAnkle),
-                try? observation.recognizedPoint(.rightAnkle),
-            ].compactMap { $0 }
-            return OutfitPhotoQualityAssessment.evaluate(
-                personDetected: true,
-                headVisible: (nose?.confidence ?? 0) >= 0.2,
-                feetVisible: ankles.contains { $0.confidence >= 0.2 }
-            )
+            return Self.assess(observations: request.results ?? [])
         }.value
     }
 

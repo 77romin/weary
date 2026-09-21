@@ -3,6 +3,7 @@ import PhotosUI
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import Vision
 
 struct CameraPicker: UIViewControllerRepresentable {
     let onCapture: (Data) -> Void
@@ -58,6 +59,40 @@ struct OutfitCameraView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: OutfitCameraViewController, context: Context) {}
 }
 
+/// Runs on the video output's serial queue. Only a small, throttled Vision
+/// result crosses to the main actor; camera frames are never retained.
+private final class LiveOutfitFramingAnalyzer: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+    let queue = DispatchQueue(label: "com.weary.camera.framing", qos: .utility)
+    private let onAssessment: @Sendable (OutfitPhotoQualityAssessment) -> Void
+    private var lastAnalysisTime: TimeInterval = 0
+    private var isFrontCamera = false
+
+    init(onAssessment: @escaping @Sendable (OutfitPhotoQualityAssessment) -> Void) {
+        self.onAssessment = onAssessment
+    }
+
+    func setFrontCamera(_ isFront: Bool) {
+        queue.async { self.isFrontCamera = isFront }
+    }
+
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastAnalysisTime >= 0.7 else { return }
+        lastAnalysisTime = now
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        let request = VNDetectHumanBodyPoseRequest()
+        let orientation: CGImagePropertyOrientation = isFrontCamera ? .leftMirrored : .right
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+        guard (try? handler.perform([request])) != nil else { return }
+        onAssessment(DeviceOutfitPhotoQualityChecker.assess(observations: request.results ?? []))
+    }
+}
+
 @MainActor
 final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapturePhotoCaptureDelegate, PHPickerViewControllerDelegate {
     private let onCapture: (Data) -> Void
@@ -65,7 +100,11 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.weary.camera.session")
     private let photoOutput = AVCapturePhotoOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
     private let previewLayer = AVCaptureVideoPreviewLayer()
+    private var framingAnalyzer: LiveOutfitFramingAnalyzer?
+    private var framingGuide: UIView?
+    private var framingLabel: UILabel?
     private var videoInput: AVCaptureDeviceInput?
     private var cameraPosition: AVCaptureDevice.Position = .back
     private var zoomButtons: [UIButton] = []
@@ -136,7 +175,20 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
         if !session.outputs.contains(photoOutput), session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
         }
+        if !session.outputs.contains(videoOutput), session.canAddOutput(videoOutput) {
+            videoOutput.alwaysDiscardsLateVideoFrames = true
+            session.addOutput(videoOutput)
+            let analyzer = LiveOutfitFramingAnalyzer { [weak self] assessment in
+                Task { @MainActor [weak self] in
+                    self?.updateFramingGuide(assessment)
+                }
+            }
+            framingAnalyzer = analyzer
+            videoOutput.setSampleBufferDelegate(analyzer, queue: analyzer.queue)
+        }
         session.commitConfiguration()
+        framingAnalyzer?.setFrontCamera(position == .front)
+        updateFramingGuide(nil)
         setZoom(displayFactor: 1)
     }
 
@@ -160,6 +212,7 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
         guide.layer.borderColor = UIColor.white.withAlphaComponent(0.7).cgColor
         guide.isUserInteractionEnabled = false
         view.addSubview(guide)
+        framingGuide = guide
 
         let libraryButton = controlButton(title: "사진 보관함", systemImage: "photo.on.rectangle") { [weak self] in
             self?.showPhotoLibrary()
@@ -218,6 +271,7 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
         guideLabel.layer.shadowRadius = 1
         guideLabel.layer.shadowOffset = .zero
         view.addSubview(guideLabel)
+        framingLabel = guideLabel
 
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
@@ -243,6 +297,14 @@ final class OutfitCameraViewController: UIViewController, @preconcurrency AVCapt
             shutterButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
         ])
         updateZoomButtons(selectedLevel: 1)
+    }
+
+    private func updateFramingGuide(_ assessment: OutfitPhotoQualityAssessment?) {
+        guard isViewLoaded, view.window != nil || assessment == nil else { return }
+        let isReady = assessment?.isSuitable == true
+        framingGuide?.layer.borderColor = (isReady ? UIColor(WEARyTheme.lime) : UIColor.white.withAlphaComponent(0.7)).cgColor
+        let message = assessment?.liveGuidance ?? "머리 끝부터 발끝까지 모두 담아주세요"
+        framingLabel?.text = "\(message)\n모자와 가방도 몸에 착용해 주세요"
     }
 
     private func controlButton(title: String?, systemImage: String, action: @escaping () -> Void) -> UIButton {
