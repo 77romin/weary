@@ -1,5 +1,17 @@
+import AuthenticationServices
 import Foundation
 import Supabase
+import UIKit
+
+private final class OAuthPresentationContextProvider: NSObject,
+    ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow) ?? ASPresentationAnchor()
+    }
+}
 
 enum SignUpResult {
     case signedIn
@@ -210,6 +222,8 @@ final class AuthenticationStore: ObservableObject {
     private let pendingConfirmationKey = "auth.pendingEmailConfirmation"
     private let pendingHandleRecoveryKey = "auth.pendingHandleRecovery"
     private let pendingPasswordRecoveryKey = "auth.pendingPasswordRecovery"
+    private let oauthPresentationContextProvider = OAuthPresentationContextProvider()
+    private var oauthSession: ASWebAuthenticationSession?
 
     var displayName: String { profile?.displayName ?? "나의 WEARy" }
     var handle: String? { profile?.handle }
@@ -329,7 +343,10 @@ final class AuthenticationStore: ObservableObject {
             let session = try await client.auth.signInWithOAuth(
                 provider: provider,
                 redirectTo: SupabaseService.authRedirectURL
-            )
+            ) { [weak self] authorizationURL in
+                guard let self else { throw CancellationError() }
+                return try await self.launchOAuthFlow(authorizationURL)
+            }
             await activate(session)
             clearPendingLinkPurpose()
         } catch {
@@ -377,7 +394,7 @@ final class AuthenticationStore: ObservableObject {
     }
 
     func handleIncomingURL(_ url: URL) async {
-        guard url.scheme?.lowercased() == SupabaseService.authRedirectURL.scheme,
+        guard SupabaseService.isAuthCallbackURL(url),
               let client = SupabaseService.client else { return }
         phase = .loading
         do {
@@ -451,6 +468,34 @@ final class AuthenticationStore: ObservableObject {
             throw SupabaseServiceError.missingConfiguration
         }
         return client
+    }
+
+    private func launchOAuthFlow(_ authorizationURL: URL) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let callback = ASWebAuthenticationSession.Callback.https(
+                host: SupabaseService.authRedirectURL.host!,
+                path: SupabaseService.authRedirectURL.path
+            )
+            let session = ASWebAuthenticationSession(
+                url: authorizationURL,
+                callback: callback
+            ) { [weak self] callbackURL, error in
+                self?.oauthSession = nil
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let callbackURL, SupabaseService.isAuthCallbackURL(callbackURL) {
+                    continuation.resume(returning: callbackURL)
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+            session.presentationContextProvider = oauthPresentationContextProvider
+            oauthSession = session
+            if !session.start() {
+                oauthSession = nil
+                continuation.resume(throwing: URLError(.cannotLoadFromNetwork))
+            }
+        }
     }
 
     private func discardAnonymousSession(using client: SupabaseClient) async throws {

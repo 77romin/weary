@@ -178,6 +178,10 @@ private struct AppEntryView: View {
         .onOpenURL { url in
             Task { await authentication.handleIncomingURL(url) }
         }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            guard let url = activity.webpageURL else { return }
+            Task { await authentication.handleIncomingURL(url) }
+        }
         .task(id: authentication.userID) {
             prepareServiceCache()
         }

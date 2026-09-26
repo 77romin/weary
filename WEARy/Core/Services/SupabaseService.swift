@@ -2,7 +2,16 @@ import Foundation
 import Supabase
 
 enum SupabaseService {
-    static let authRedirectURL = URL(string: "weary://auth-callback")!
+    static let authRedirectURL = URL(string: "https://77romin.github.io/weary/auth/callback")!
+
+    static func isAuthCallbackURL(_ url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        return components.scheme?.lowercased() == "https"
+            && components.host?.lowercased() == "77romin.github.io"
+            && components.path == "/weary/auth/callback"
+    }
 
     static let client: SupabaseClient? = {
         guard

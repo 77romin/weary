@@ -1144,6 +1144,14 @@ struct OutfitFlowTests {
         #expect(!AccountInputValidator.isValidLoginIdentifier("한글아이디"))
     }
 
+    @Test("비밀번호는 8자 이상이며 영문과 숫자를 포함한다")
+    func validatesAccountPassword() {
+        #expect(AccountInputValidator.isValidPassword("weary2026"))
+        #expect(!AccountInputValidator.isValidPassword("password"))
+        #expect(!AccountInputValidator.isValidPassword("12345678"))
+        #expect(!AccountInputValidator.isValidPassword("wear26"))
+    }
+
     @Test("새 매물은 닉네임과 무관하게 내 매물로 식별한다")
     func recognizesOwnedListingWithCustomNickname() {
         let listing = MarketListing(

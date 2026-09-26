@@ -261,10 +261,12 @@ open WEARy.xcodeproj
 Supabase Dashboard의 **Authentication → URL Configuration**에서 Redirect URLs에 아래 주소를 추가합니다.
 
 ```text
-weary://auth-callback
+https://77romin.github.io/weary/auth/callback
 ```
 
-이 주소는 Supabase Site URL과 Redirect URLs에 함께 등록하며 이메일 확인·비밀번호 재설정·OAuth 완료 후 앱으로 돌아오는 공통 딥링크입니다. 이메일 로그인은 **Authentication → Sign In / Providers → Email**을 활성화합니다. Google·Kakao·Apple은 같은 화면에서 각 제공자를 활성화하고 해당 개발자 콘솔에서 발급한 Client ID와 Secret을 입력해야 합니다. 앱에는 publishable key만 두며 provider secret이나 `service_role` 키를 넣지 않습니다. 아이디 로그인용 이메일 조회는 배포된 `account-auth` Edge Function 내부에서만 수행합니다.
+이 주소는 Supabase Site URL과 Redirect URLs에 함께 등록한 HTTPS Universal Link입니다. `77romin.github.io`의 AASA 파일과 앱의 Associated Domains entitlement가 연결되어 이메일 확인·비밀번호 재설정·OAuth 완료 후 앱으로 돌아옵니다. 이메일 로그인은 **Authentication → Sign In / Providers → Email**을 활성화합니다. Google·Kakao·Apple은 같은 화면에서 각 제공자를 활성화하고 해당 개발자 콘솔에서 발급한 Client ID와 Secret을 입력해야 합니다. 앱에는 publishable key만 두며 provider secret이나 `service_role`·secret key를 넣지 않습니다. 아이디 로그인용 이메일 조회는 배포된 `account-auth` Edge Function 내부에서만 수행합니다.
+
+운영 Auth는 익명 가입을 끄고 비밀번호를 8자 이상·영문과 숫자 포함으로 제한합니다. `account-auth`는 요청 크기와 입력 형식을 검사하고, IP·요청 조합·로그인 식별자별 서버 레이트리밋과 동일한 실패 응답을 적용해 아이디 열거와 무차별 대입을 줄입니다. 운영용 secret key는 Edge Function 환경에서만 사용합니다.
 
 계정 데이터 규칙은 다음과 같습니다.
 
@@ -272,7 +274,7 @@ weary://auth-callback
 - 회원가입 전에 이메일·아이디·닉네임 중복 확인을 완료해야 합니다.
 - 공개 아이디(`handle`)는 영문 소문자·숫자·`.`·`_` 조합 3–20자이며 최초 설정 후 변경할 수 없습니다.
 - 닉네임은 대소문자를 무시해 중복을 허용하지 않으며 수정 가능하고 피드 작성자명과 새 판매 글의 판매자명으로 사용합니다.
-- 비밀번호는 `profiles`에 저장하지 않고 Supabase Auth에서만 관리합니다.
+- 비밀번호는 8자 이상이며 영문과 숫자를 포함하고, `profiles`에 저장하지 않고 Supabase Auth에서만 관리합니다.
 - 신체 정보와 추가 치수는 본인만 읽고 수정할 수 있는 별도 테이블에 저장하며, 현재는 추천·광고에 사용하지 않습니다.
 
 명령행 빌드는 다음과 같이 검증할 수 있습니다.
@@ -296,7 +298,7 @@ xcodebuild -project WEARy.xcodeproj \
   test
 ```
 
-Supabase 커뮤니티 권한은 연결된 개발 프로젝트를 대상으로 다음처럼 검증합니다. 테스트 게시물과 반응은 종료 시 삭제되지만 익명 Auth 테스트 사용자 두 명은 남습니다.
+Supabase 커뮤니티 권한은 별도의 테스트 프로젝트를 대상으로 다음처럼 검증합니다. 테스트 게시물과 반응은 종료 시 삭제됩니다. 운영 프로젝트는 익명 가입을 비활성화했으므로 익명 사용자를 생성하는 통합 테스트를 운영 프로젝트에서 실행하지 않습니다.
 
 ```bash
 scripts/verify_supabase_community.sh
@@ -474,13 +476,16 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
 - [x] 로그인 및 내 정보 관리 기반 구현
   - [x] 비로그인 사용자의 로그인 화면 진입과 이메일 계정 흐름
   - [x] 아이디·비밀번호 찾기와 비밀번호 재설정 딥링크 처리
-  - [x] Google·Kakao·Apple OAuth 진입 버튼과 콜백 URL 스킴 구현
+  - [x] Google·Kakao·Apple OAuth 진입 버튼과 HTTPS Universal Link 콜백 구현
   - [x] 변경 불가 아이디, 수정 가능 닉네임과 선택 신체 치수 저장
   - [x] 닉네임을 원격 피드 작성자명과 새 마켓 판매자명에 반영
   - [x] Supabase Redirect URL 허용 목록 등록
   - [x] 가입 확인 메일 재전송과 이메일 인증 앱 복귀 처리
   - [x] 이메일·아이디 통합 로그인과 서버 내부 식별자 조회 구현
   - [x] 이메일·아이디·닉네임 가입 중복 확인과 닉네임 유일성 적용
+  - [x] 운영 익명 가입 차단, 영문+숫자 비밀번호 정책과 Auth 요청 제한 적용
+  - [x] `account-auth` 요청 크기·입력 검증과 IP·식별자별 서버 레이트리밋 적용
+  - [x] 커스텀 URL 스킴을 AASA 기반 HTTPS Universal Link로 전환
   - [ ] 이메일 인증을 완료한 최초 운영 계정에 `admin` 역할 부여
   - [ ] Google·Kakao·Apple 개발자 콘솔 키 발급 및 Supabase Provider 활성화 _(당장은 보류)_
 - [x] 커뮤니티 게시물·댓글·좋아요·북마크·팔로우 스키마와 RLS 구현
@@ -528,7 +533,7 @@ RUN_SUPABASE_INTEGRATION=1 xcodebuild -project WEARy.xcodeproj \
   - [ ] 보존 기간·파기·철회와 미성년자·초상권 관련 법률 검토 및 운영 정책 확정
 - [ ] 구독 모델과 AI 비용 구조 검증
 
-## 남은 할 일 — 2026-09-19 기준
+## 남은 할 일 — 2026-09-27 기준
 
 핵심 기능형 프로토타입은 구현했고 실제 iPhone에 설치했습니다. Supabase 피드·마켓·채팅은 실서버에 연결되어 있으며, 실제 의류 탐지와 iCloud 복원까지 완성된 상태는 아닙니다. 아래 목록을 다음 작업의 우선순위 기준으로 사용합니다. 화면 녹화는 사용자 결정에 따라 제외합니다.
 
@@ -612,7 +617,7 @@ MY의 로컬 피드백은 사용자 선택 기반 지표이고, 정답 데이터
 
 ### 3. 운영 계정과 친구 검증 — 계정 권한·사용자 참여 필요
 
-- [ ] 이메일 인증을 완료한 최초 운영 계정에 안전하게 `admin` 역할 부여
+- [ ] 실제 이메일을 사용하는 운영 계정을 확정하고 안전하게 `admin` 역할 부여
 - [ ] 실제 운영 계정으로 신고 처리·제재·이의 제기 인용·기각 성공 경로 확인
 - [ ] 친구 두 명과 실제 계정으로 게시·팔로우·매물·양방향 채팅 사용성 확인
 - [ ] 사용자 인터뷰로 기록의 편의성, 후보 수정 부담과 옷장 정리 가치 검증
@@ -633,6 +638,10 @@ OAuth 발급과 Apple 개발자 팀 설정은 사용자가 해당 계정에 접�
   - 새 페이지는 기존 원격·로컬 매물을 보존하고 중복 ID는 최신 서버 값으로 갱신합니다. 사용자 차단 때문에 한 페이지가 비어도 다음 커서로 계속 진행합니다.
   - 당겨서 새로고침과 Realtime 갱신은 현재 불러온 범위를 다시 맞추며, 한 세션의 새로고침 윈도우는 최대 100개입니다. 추가 로딩 실패 시 기존 캐시를 유지하고 재시도 안내를 표시합니다.
 - [ ] 인증 메일 발송·오류 모니터링·서버 백업 및 비용 한도 운영 점검
+- [x] 운영 Auth URL·비밀번호·익명 가입·요청 제한 설정 점검과 강화
+- [x] `account-auth` 남용 방지 DB 레이트리밋 배포 및 실제 Edge Function 응답 검증
+- [ ] Apple Associated Domains CDN에서 AASA 파일 수신 최종 확인
+- [ ] 노출된 레거시 Supabase JWT 키 비활성화 후 새 publishable/secret 키만 사용하는지 재검증
 - [ ] 얼굴 사진 공개 동의, 개인정보 보존·파기와 신고 운영 정책 검토
   - [x] 게시할 때마다 공개 업로드와 사진 게시 권한·타인 동의를 확인하는 앱 가드
   - [x] 동의 규칙 단위 테스트와 피드 작성·기록 공개 UI 테스트, generic iPhone Debug 빌드 통과

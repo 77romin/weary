@@ -268,7 +268,7 @@ private struct SignUpView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(availability.allAvailable ? .green : .red)
                     }
-                    SecureField("비밀번호 (8자 이상)", text: $password)
+                    SecureField("비밀번호 (8자 이상 · 영문+숫자)", text: $password)
                         .textContentType(.newPassword)
                     SecureField("비밀번호 확인", text: $passwordConfirmation)
                         .textContentType(.newPassword)
@@ -494,7 +494,7 @@ struct PasswordUpdateView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("새 비밀번호 (8자 이상)", text: $password)
+                    SecureField("새 비밀번호 (8자 이상 · 영문+숫자)", text: $password)
                     SecureField("새 비밀번호 확인", text: $confirmation)
                 } footer: {
                     Text("다른 서비스에서 사용하지 않는 비밀번호를 권장해요.")
@@ -506,7 +506,7 @@ struct PasswordUpdateView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("변경") { update() }
                         .fontWeight(.bold)
-                        .disabled(password.count < 8 || password != confirmation || isWorking)
+                        .disabled(!AccountInputValidator.isValidPassword(password) || password != confirmation || isWorking)
                 }
             }
             .alert("변경하지 못했어요", isPresented: Binding(
@@ -544,6 +544,12 @@ enum AccountInputValidator {
         return normalized.contains("@") || isValidHandle(normalized)
     }
 
+    static func isValidPassword(_ value: String) -> Bool {
+        value.count >= 8
+            && value.rangeOfCharacter(from: .letters) != nil
+            && value.rangeOfCharacter(from: .decimalDigits) != nil
+    }
+
     static func signUpMessage(
         handle: String,
         nickname: String,
@@ -555,7 +561,7 @@ enum AccountInputValidator {
         if !isValidHandle(normalizedHandle) { return "아이디 형식을 확인해 주세요." }
         if nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 { return "닉네임을 2자 이상 입력해 주세요." }
         if !email.contains("@") { return "이메일을 확인해 주세요." }
-        if password.count < 8 { return "비밀번호를 8자 이상 입력해 주세요." }
+        if !isValidPassword(password) { return "비밀번호는 8자 이상이며 영문과 숫자를 포함해야 해요." }
         if password != confirmation { return "비밀번호가 일치하지 않아요." }
         return nil
     }

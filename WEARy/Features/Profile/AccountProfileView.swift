@@ -171,7 +171,9 @@ struct AccountProfileView: View {
         let normalizedHandle = handle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !AccountInputValidator.isValidHandle(normalizedHandle) { return "아이디를 확인해 주세요." }
         if nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 { return "닉네임을 확인해 주세요." }
-        if !newPassword.isEmpty && newPassword.count < 8 { return "새 비밀번호는 8자 이상이어야 해요." }
+        if !newPassword.isEmpty && !AccountInputValidator.isValidPassword(newPassword) {
+            return "새 비밀번호는 8자 이상이며 영문과 숫자를 포함해야 해요."
+        }
         if newPassword != passwordConfirmation { return "새 비밀번호가 일치하지 않아요." }
         return nil
     }
