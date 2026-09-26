@@ -14,6 +14,28 @@
 
 개인 옷장과 비공개 착장은 기기에 저장하고, 사용자가 공개한 게시물·매물·채팅만 Supabase에 저장하는 로컬 우선 구조입니다.
 
+## 앱 화면
+
+<p align="center">
+  <img src="docs/images/weary-feed.png" width="180" alt="WEARy 착장 피드 화면">
+  <img src="docs/images/weary-closet.png" width="180" alt="WEARy 개인 옷장 화면">
+  <img src="docs/images/weary-capture.png" width="180" alt="WEARy 착장 기록 화면">
+</p>
+<p align="center">
+  <img src="docs/images/weary-market.png" width="180" alt="WEARy 중고거래 마켓 화면">
+  <img src="docs/images/weary-my.png" width="180" alt="WEARy MY 화면">
+</p>
+
+| 화면 | 설명 |
+| --- | --- |
+| 피드 | 실제 착장 사진을 중심으로 다른 사용자의 스타일을 발견하고 소통합니다. |
+| 옷장 | 등록한 옷의 누끼 이미지, 상태와 착용 횟수를 한눈에 관리합니다. |
+| 기록 | 전신 착장을 촬영하거나 사진을 선택해 온디바이스 옷장 후보 추천을 시작합니다. |
+| 마켓 | 잘 입지 않는 옷을 판매하고 관심·채팅·거래 상태를 관리합니다. |
+| MY | 프로필, 소셜 지표, 월간 착장 캘린더와 개인 통계를 확인합니다. |
+
+화면은 iPhone 17 Pro 시뮬레이터의 발표용 데모 데이터로 촬영했으며 실제 사용자 정보는 포함하지 않습니다.
+
 ## 현재 구현 상태
 
 ### 개인 옷장과 착장 기록
