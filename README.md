@@ -641,7 +641,8 @@ OAuth 발급과 Apple 개발자 팀 설정은 사용자가 해당 계정에 접�
 - [x] 운영 Auth URL·비밀번호·익명 가입·요청 제한 설정 점검과 강화
 - [x] `account-auth` 남용 방지 DB 레이트리밋 배포 및 실제 Edge Function 응답 검증
 - [ ] Apple Associated Domains CDN에서 AASA 파일 수신 최종 확인
-- [ ] 노출된 레거시 Supabase JWT 키 비활성화 후 새 publishable/secret 키만 사용하는지 재검증
+- [x] 노출된 레거시 Supabase JWT 키 비활성화 후 새 publishable/secret 키만 사용하는지 재검증
+  - 레거시 키의 Auth 요청은 401로 거부되고 새 publishable 키 요청은 200, 새 secret 키 기반 `account-auth` 요청은 정상 응답함을 확인했습니다.
 - [ ] 얼굴 사진 공개 동의, 개인정보 보존·파기와 신고 운영 정책 검토
   - [x] 게시할 때마다 공개 업로드와 사진 게시 권한·타인 동의를 확인하는 앱 가드
   - [x] 동의 규칙 단위 테스트와 피드 작성·기록 공개 UI 테스트, generic iPhone Debug 빌드 통과
