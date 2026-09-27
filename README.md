@@ -16,14 +16,18 @@
 
 ## 앱 화면
 
+### 핵심 사용 화면
+
 <p align="center">
-  <img src="docs/images/weary-feed.png" width="180" alt="WEARy 착장 피드 화면">
-  <img src="docs/images/weary-closet.png" width="180" alt="WEARy 개인 옷장 화면">
-  <img src="docs/images/weary-capture.png" width="180" alt="WEARy 착장 기록 화면">
+  <img src="docs/images/weary-feed.png" width="170" alt="WEARy 착장 피드 화면">
+  <img src="docs/images/weary-closet.png" width="170" alt="WEARy 개인 옷장 화면">
+  <img src="docs/images/weary-capture.png" width="170" alt="WEARy 착장 기록 화면">
 </p>
 <p align="center">
-  <img src="docs/images/weary-market.png" width="180" alt="WEARy 중고거래 마켓 화면">
-  <img src="docs/images/weary-my.png" width="180" alt="WEARy MY 화면">
+  <img src="docs/images/weary-outfit-detail.png" width="170" alt="WEARy 날짜별 착장 상세 화면">
+  <img src="docs/images/weary-calendar.png" width="170" alt="WEARy 월간 착장 캘린더 화면">
+  <img src="docs/images/weary-market.png" width="170" alt="WEARy 중고거래 마켓 화면">
+  <img src="docs/images/weary-my.png" width="170" alt="WEARy MY 화면">
 </p>
 
 | 화면 | 설명 |
@@ -31,8 +35,19 @@
 | 피드 | 실제 착장 사진을 중심으로 다른 사용자의 스타일을 발견하고 소통합니다. |
 | 옷장 | 등록한 옷의 누끼 이미지, 상태와 착용 횟수를 한눈에 관리합니다. |
 | 기록 | 전신 착장을 촬영하거나 사진을 선택해 온디바이스 옷장 후보 추천을 시작합니다. |
+| 착장 상세·캘린더 | 날짜별 아이템을 확인하고 한 달의 착장과 반복 착용 패턴을 돌아봅니다. |
 | 마켓 | 잘 입지 않는 옷을 판매하고 관심·채팅·거래 상태를 관리합니다. |
 | MY | 프로필, 소셜 지표, 월간 착장 캘린더와 개인 통계를 확인합니다. |
+
+### 로그아웃 온보딩
+
+<p align="center">
+  <img src="docs/images/weary-onboarding-closet.png" width="180" alt="WEARy 옷장 소개 온보딩 화면">
+  <img src="docs/images/weary-onboarding-record.png" width="180" alt="WEARy 착장 기록 소개 온보딩 화면">
+  <img src="docs/images/weary-onboarding-discover.png" width="180" alt="WEARy 취향 발견과 중고거래 소개 온보딩 화면">
+</p>
+
+로그아웃 상태에서는 옷 등록, 착장 기록, 취향 발견과 중고거래로 이어지는 핵심 가치를 세 장으로 안내한 뒤 로그인·회원가입으로 연결합니다.
 
 화면은 iPhone 17 Pro 시뮬레이터의 발표용 데모 데이터로 촬영했으며 실제 사용자 정보는 포함하지 않습니다.
 
