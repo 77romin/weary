@@ -30,6 +30,15 @@
   <img src="docs/images/weary-my.png" width="170" alt="WEARy MY 화면">
 </p>
 
+### 게시물 상세
+
+<p align="center">
+  <img src="docs/images/weary-feed-detail.png" width="200" alt="WEARy OOTD 피드 게시물 상세 화면">
+  <img src="docs/images/weary-market-detail.png" width="200" alt="WEARy 중고거래 매물 상세 화면">
+</p>
+
+OOTD 상세에서는 실제 착장 사진과 설명, 해시태그, 연결한 옷장 아이템과 댓글을 함께 보여줍니다. 매물 상세에서는 가격·판매 상태·사이즈·착용 횟수와 설명을 제공하고, 지도에 표시한 만날 장소까지 거래 정보로 연결합니다.
+
 | 화면 | 설명 |
 | --- | --- |
 | 피드 | 실제 착장 사진을 중심으로 다른 사용자의 스타일을 발견하고 소통합니다. |
