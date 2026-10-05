@@ -123,6 +123,60 @@
 └─────────────────────────────────────────────────┘
 ```
 
+## 데이터 모델 요약 ERD
+
+개인 옷장과 비공개 착장은 iPhone의 SwiftData에 남고, 사용자가 공개를 확정한 스냅샷만 Supabase로 전송됩니다.
+
+### iPhone 개인 영역
+
+```mermaid
+erDiagram
+    GARMENT ||--o{ OUTFIT_ITEM : worn_in
+    OUTFIT ||--o{ OUTFIT_ITEM : contains
+
+    GARMENT {
+        uuid id PK
+        string name
+        string category
+        int purchase_price
+        binary cutout_image
+    }
+    OUTFIT {
+        uuid id PK
+        datetime worn_at
+        bool is_confirmed
+        binary photo
+    }
+    OUTFIT_ITEM {
+        uuid id PK
+        uuid garment_id FK
+        uuid outfit_id FK
+        string match_source
+        int display_order
+    }
+```
+
+### Supabase 공개 서비스 영역
+
+```mermaid
+erDiagram
+    PROFILE ||--o{ POST : authors
+    POST ||--o{ POST_MEDIA : contains
+    POST ||--o{ POST_ITEM : snapshots
+    POST ||--o{ COMMENT : receives
+    POST ||--o{ POST_LIKE : receives
+    POST ||--o{ BOOKMARK : receives
+    PROFILE ||--o{ FOLLOW : follows
+    PROFILE ||--o{ MARKET_LISTING : sells
+    MARKET_LISTING ||--o{ MARKET_MEDIA : contains
+    MARKET_LISTING ||--o| MARKET_VERIFICATION : verifies
+    MARKET_LISTING ||--o{ MARKET_FAVORITE : receives
+    MARKET_LISTING ||--o{ CONVERSATION : opens
+    CONVERSATION ||--o{ MESSAGE : contains
+```
+
+로컬 객체와 공개 객체 사이는 데이터베이스 외래 키가 아니라 게시 시점의 `source_private_id`와 옷 정보 스냅샷으로 연결합니다. 전체 컬럼, 운영·신고·제재 관계는 [데이터 아키텍처 및 상세 ERD](./DATA_ARCHITECTURE.md)에서 확인할 수 있습니다.
+
 ## 로컬 실행
 
 요구 사항:

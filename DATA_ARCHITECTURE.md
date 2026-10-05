@@ -47,7 +47,7 @@ flowchart LR
 
 | 역할 | 선택 기술 |
 | --- | --- |
-| 커뮤니티 계정 | Supabase Auth + Apple로 로그인 |
+| 커뮤니티 계정 | Supabase Auth 이메일 로그인 + OAuth 확장 |
 | 관계형 데이터 | Supabase PostgreSQL |
 | 공개 착장·상품 이미지 | Supabase Storage |
 | 초기 댓글·채팅 갱신 | Supabase Realtime |
@@ -104,14 +104,12 @@ flowchart LR
 
 ## 3. 개인 iCloud 영역 ERD
 
-개인 영역은 현재 SwiftData 모델을 발전시킨다. 통계 값은 중복 저장하지 않고 확정된 `OUTFIT_ITEM`을 기준으로 계산한다.
+아래 ERD는 현재 `Garment`, `Outfit`, `OutfitItem` SwiftData 모델을 기준으로 한다. 일반 Debug·Release에서는 로컬에 저장하며, CloudKit capability를 연결한 구성에서는 같은 모델을 사용자의 private database와 동기화하는 것을 목표로 한다. 통계 값은 중복 저장하지 않고 확정된 `OUTFIT_ITEM`을 기준으로 계산한다.
 
 ```mermaid
 erDiagram
     GARMENT ||--o{ OUTFIT_ITEM : worn_as
     OUTFIT ||--o{ OUTFIT_ITEM : contains
-    GARMENT ||--o{ GARMENT_IMAGE : has
-    OUTFIT ||--o{ OUTFIT_IMAGE : has
 
     GARMENT {
         uuid id PK
@@ -126,18 +124,8 @@ erDiagram
         string season
         string status
         datetime created_at
-        datetime updated_at
-        datetime deleted_at
-    }
-
-    GARMENT_IMAGE {
-        uuid id PK
-        uuid garment_id FK
-        string kind
-        binary asset
-        int pixel_width
-        int pixel_height
-        datetime created_at
+        binary image_data
+        binary cutout_image_data
     }
 
     OUTFIT {
@@ -145,17 +133,12 @@ erDiagram
         datetime worn_at
         string note
         bool is_confirmed
+        bool is_published
         datetime created_at
-        datetime updated_at
-        datetime deleted_at
-    }
-
-    OUTFIT_IMAGE {
-        uuid id PK
-        uuid outfit_id FK
-        string kind
-        binary asset
-        datetime created_at
+        binary photo_data
+        bool vision_attempted
+        int vision_candidate_count
+        int vision_accepted_count
     }
 
     OUTFIT_ITEM {
@@ -164,19 +147,21 @@ erDiagram
         uuid garment_id FK
         string match_source
         string match_confidence
-        datetime created_at
+        int suggested_rank
+        bool manually_adjusted
+        int display_order
     }
 ```
 
 ### 개인 모델 규칙
 
-- `GARMENT_IMAGE.kind`: `original`, `cutout_thumbnail`.
-- `OUTFIT_IMAGE.kind`: `original`, 추후 `face_hidden_public_preview` 등을 추가할 수 있다.
+- 옷 원본과 누끼 이미지는 현재 `Garment.imageData`, `Garment.cutoutImageData`의 external storage 필드로 분리한다.
+- 실제 착장 사진은 `Outfit.photoData`의 external storage 필드에 저장한다.
 - 한 착장에는 같은 옷을 한 번만 연결한다. 앱 로직으로 `(outfit_id, garment_id)` 중복을 막는다.
 - `wear_count`, `last_worn_at`, `cost_per_wear`는 `OUTFIT_ITEM`과 `OUTFIT`에서 계산한다.
-- `is_published`는 개인 데이터의 진실 원천으로 두지 않는다. 서버 게시 결과를 추적하려면 `PUBLICATION_RECEIPT` 같은 로컬 영수증 모델을 별도로 추가한다.
+- `is_published`는 화면 상태를 위한 로컬 표시값이며 서버 게시물의 진실 원천은 아니다. 서버 게시 결과를 장기 추적하려면 `PUBLICATION_RECEIPT` 같은 로컬 영수증 모델을 별도로 추가한다.
 - CloudKit 동기화 모델에서는 `@Attribute(.unique)` 없이 UUID를 애플리케이션 수준 식별자로 사용한다. 실제 컨테이너 연결 후 다기기 병합에서 논리 UUID 중복이 생기지 않는지 추가 검증한다.
-- 사진은 원본과 작은 누끼 이미지를 분리한다. 대용량 원본의 업로드 비용, iCloud 용량, 셀룰러 정책을 별도로 검증한다.
+- 대용량 원본의 업로드 비용, iCloud 용량, 셀룰러 정책은 실제 CloudKit 연결 후 별도로 검증한다.
 
 ### 공개·판매 연결 영수증
 
@@ -194,90 +179,84 @@ erDiagram
 
 ## 4. 서비스 서버 ERD
 
-이 ERD는 장기 도메인 전체를 표현한다. 현재 서버 MVP에는 프로필, 커뮤니티, 판매 상품과 상품 단위 텍스트 채팅까지 구현되어 있으며 결제·배송·운영 도메인은 이후 단계로 둔다.
+아래 ERD는 현재 Supabase migration에 실제로 생성된 테이블을 도메인별로 나눈 것이다. `auth.users`는 Supabase Auth가 관리하며, 앱이 직접 다루는 공개 프로필과 민감한 신체 치수는 별도 테이블로 분리한다.
+
+### 4.1 계정과 커뮤니티
 
 ```mermaid
 erDiagram
-    USER ||--|| PROFILE : has
-    USER ||--o{ POST : authors
-    USER ||--o{ COMMENT : writes
-    USER ||--o{ POST_LIKE : likes
-    USER ||--o{ BOOKMARK : saves
-    USER ||--o{ FOLLOW : follows
-    USER ||--o{ FOLLOW : is_followed
-    POST ||--o{ POST_MEDIA : contains
-    POST ||--o{ POST_ITEM : tags
-    POST ||--o{ COMMENT : receives
-    POST ||--o{ POST_LIKE : receives
-    POST ||--o{ BOOKMARK : receives
-    USER ||--o{ LISTING : sells
-    LISTING ||--o{ LISTING_MEDIA : contains
-    LISTING ||--o| LISTING_VERIFICATION : optionally_proves
-    LISTING ||--o{ LISTING_FAVORITE : receives
-    USER ||--o{ LISTING_FAVORITE : creates
-    USER ||--o{ CONVERSATION : buys
-    CONVERSATION ||--o{ MESSAGE : contains
-    USER ||--o{ MESSAGE : sends
-    LISTING ||--o{ CONVERSATION : concerns
-    LISTING ||--o{ PURCHASE_REQUEST : receives
-    USER ||--o{ PURCHASE_REQUEST : requests
-    USER ||--o{ REPORT : submits
-    USER ||--o{ USER_BLOCK : blocks
-    USER ||--o{ USER_BLOCK : is_blocked
+    AUTH_USERS ||--|| PROFILES : owns
+    AUTH_USERS ||--o| PROFILE_MEASUREMENTS : privately_owns
+    PROFILES ||--o{ POSTS : authors
+    PROFILES ||--o{ COMMENTS : writes
+    PROFILES ||--o{ POST_LIKES : likes
+    PROFILES ||--o{ BOOKMARKS : saves
+    PROFILES ||--o{ FOLLOWS : follower
+    PROFILES ||--o{ FOLLOWS : following
+    POSTS ||--o{ POST_MEDIA : contains
+    POSTS ||--o{ POST_ITEMS : snapshots
+    POSTS ||--o{ COMMENTS : receives
+    POSTS ||--o{ POST_LIKES : receives
+    POSTS ||--o{ BOOKMARKS : receives
+    COMMENTS ||--o{ COMMENTS : replies
 
-    USER {
+    PROFILES {
         uuid id PK
-        string email UK
-        string apple_subject UK
-        string status
-        datetime created_at
-        datetime deleted_at
-    }
-
-    PROFILE {
-        uuid user_id PK_FK
+        string display_name
         string handle UK
-        string display_name UK
         string bio
         string avatar_url
+        bool handle_locked
+        datetime created_at
         datetime updated_at
     }
 
-    POST {
+    PROFILE_MEASUREMENTS {
+        uuid id PK
+        decimal height_cm
+        decimal weight_kg
+        string gender
+        decimal chest_cm
+        decimal waist_cm
+        decimal hip_cm
+        decimal inseam_cm
+        datetime updated_at
+    }
+
+    POSTS {
         uuid id PK
         uuid author_id FK
         uuid source_private_id
         string caption
+        string_array tags
         string visibility
         string status
+        uuid moderation_report_id FK
         datetime created_at
-        datetime updated_at
         datetime deleted_at
     }
 
     POST_MEDIA {
         uuid id PK
         uuid post_id FK
-        string media_url
-        string media_type
+        string storage_path
         int sort_order
         int width
         int height
     }
 
-    POST_ITEM {
+    POST_ITEMS {
         uuid id PK
         uuid post_id FK
         uuid source_private_id
         string name_snapshot
         string brand_snapshot
         string category_snapshot
-        string size_snapshot
-        string image_url
+        string image_storage_path
         int sort_order
     }
 
-    COMMENT {
+    COMMENTS {
         uuid id PK
         uuid post_id FK
         uuid author_id FK
@@ -285,129 +264,191 @@ erDiagram
         string body
         string status
         datetime created_at
-        datetime deleted_at
     }
 
-    POST_LIKE {
-        uuid user_id PK_FK
-        uuid post_id PK_FK
+    POST_LIKES {
+        uuid post_id PK
+        uuid user_id PK
         datetime created_at
     }
 
-    BOOKMARK {
-        uuid user_id PK_FK
-        uuid post_id PK_FK
+    BOOKMARKS {
+        uuid post_id PK
+        uuid user_id PK
         datetime created_at
     }
 
-    FOLLOW {
-        uuid follower_id PK_FK
-        uuid following_id PK_FK
+    FOLLOWS {
+        uuid follower_id PK
+        uuid following_id PK
         string status
         datetime created_at
     }
+```
 
-    LISTING {
+### 4.2 중고거래와 채팅
+
+```mermaid
+erDiagram
+    PROFILES ||--o{ MARKET_LISTINGS : sells
+    PROFILES ||--o{ MARKET_LISTING_FAVORITES : favorites
+    PROFILES ||--o{ MARKET_CONVERSATIONS : buys
+    PROFILES ||--o{ MARKET_MESSAGES : sends
+    MARKET_LISTINGS ||--o{ MARKET_LISTING_MEDIA : contains
+    MARKET_LISTINGS ||--o| MARKET_LISTING_VERIFICATIONS : optionally_verifies
+    MARKET_LISTINGS ||--o{ MARKET_LISTING_FAVORITES : receives
+    MARKET_LISTINGS ||--o{ MARKET_CONVERSATIONS : concerns
+    MARKET_CONVERSATIONS ||--o{ MARKET_MESSAGES : contains
+
+    MARKET_LISTINGS {
         uuid id PK
         uuid seller_id FK
         uuid source_private_id
         string title
         string description
-        int price
-        string currency
-        int original_price
-        string size_snapshot
+        bigint price
+        bigint previous_price
         string condition
         string status
         string meeting_name
         string meeting_address
         float meeting_latitude
         float meeting_longitude
+        uuid moderation_report_id FK
         datetime created_at
-        datetime updated_at
         datetime deleted_at
     }
 
-    LISTING_MEDIA {
+    MARKET_LISTING_MEDIA {
         uuid id PK
         uuid listing_id FK
-        string media_url
+        string storage_path
         int sort_order
+        int width
+        int height
     }
 
-    LISTING_VERIFICATION {
-        uuid listing_id PK_FK
+    MARKET_LISTING_VERIFICATIONS {
+        uuid listing_id PK
         uuid source_private_id
         string garment_name_snapshot
-        int purchase_price
+        bigint purchase_price
         datetime last_worn_at
         int wear_count
         string cutout_storage_path
         bool is_visible
     }
 
-    LISTING_FAVORITE {
-        uuid user_id PK_FK
-        uuid listing_id PK_FK
+    MARKET_LISTING_FAVORITES {
+        uuid listing_id PK
+        uuid user_id PK
         datetime created_at
     }
 
-    CONVERSATION {
+    MARKET_CONVERSATIONS {
         uuid id PK
         uuid listing_id FK
         uuid buyer_id FK
-        datetime created_at
         datetime last_message_at
     }
 
-    MESSAGE {
+    MARKET_MESSAGES {
         uuid id PK
         uuid conversation_id FK
         uuid sender_id FK
-        string type
         string body
-        string media_url
         datetime created_at
-        datetime deleted_at
     }
+```
 
-    PURCHASE_REQUEST {
-        uuid id PK
-        uuid listing_id FK
-        uuid buyer_id FK
-        string status
-        datetime created_at
-        datetime updated_at
-    }
+### 4.3 신고·차단·제재 운영
 
-    REPORT {
+```mermaid
+erDiagram
+    PROFILES ||--o{ CONTENT_REPORTS : submits
+    PROFILES ||--o{ USER_BLOCKS : blocker
+    PROFILES ||--o{ USER_BLOCKS : blocked
+    PROFILES ||--o| STAFF_ROLES : assigned
+    CONTENT_REPORTS ||--o{ CONTENT_REPORT_ACTIONS : audited_by
+    PROFILES ||--o{ USER_NOTICES : receives
+    PROFILES ||--o{ ACCOUNT_SANCTIONS : receives
+    ACCOUNT_SANCTIONS ||--o{ ACCOUNT_SANCTION_APPEALS : appealed_by
+    PROFILES ||--o{ ACCOUNT_SANCTION_APPEALS : submits
+
+    CONTENT_REPORTS {
         uuid id PK
         uuid reporter_id FK
         string target_type
         uuid target_id
         string reason
         string status
+        uuid reviewed_by FK
+        datetime reviewed_at
+    }
+
+    USER_BLOCKS {
+        uuid blocker_id PK
+        uuid blocked_id PK
         datetime created_at
     }
 
-    USER_BLOCK {
-        uuid blocker_id PK_FK
-        uuid blocked_id PK_FK
+    STAFF_ROLES {
+        uuid user_id PK
+        string role
+        uuid granted_by FK
         datetime created_at
+    }
+
+    CONTENT_REPORT_ACTIONS {
+        uuid id PK
+        uuid report_id FK
+        uuid moderator_id FK
+        string previous_status
+        string next_status
+        datetime created_at
+    }
+
+    USER_NOTICES {
+        uuid id PK
+        uuid recipient_id FK
+        uuid report_id FK
+        string kind
+        datetime read_at
+    }
+
+    ACCOUNT_SANCTIONS {
+        uuid id PK
+        uuid user_id FK
+        uuid source_report_id FK
+        string kind
+        datetime starts_at
+        datetime ends_at
+        datetime lifted_at
+    }
+
+    ACCOUNT_SANCTION_APPEALS {
+        uuid id PK
+        uuid sanction_id FK
+        uuid user_id FK
+        string status
+        uuid reviewed_by FK
+        datetime reviewed_at
     }
 ```
 
+`content_reports.target_type + target_id`는 게시물·매물·메시지·사용자를 가리키는 다형성 논리 참조이며 물리 외래 키는 아니다. `account_auth_rate_limits`는 인증 Edge Function의 남용 방지용 운영 테이블이므로 도메인 ERD에서는 제외한다.
+
 ### 서버 모델 규칙
 
-- 서버 사용자 식별자는 `Apple로 로그인`의 서버 검증 결과로 생성한다. iCloud 사용 가능 여부와 커뮤니티 로그인 상태는 분리한다.
-- `source_private_id`는 앱이 재게시·수정 상태를 찾기 위한 불투명 UUID다. 서버가 이 값으로 CloudKit을 조회할 수는 없다.
-- `POST_ITEM`과 `LISTING`은 개인 옷 데이터의 스냅샷을 가진다. 사용자가 개인 옷 이름을 바꾸어도 기존 공개 콘텐츠가 예기치 않게 바뀌지 않는다.
-- 좋아요, 저장, 팔로우는 사용자별 조인 테이블을 진실 원천으로 삼는다. 화면용 개수는 캐시할 수 있지만 재계산 가능해야 한다.
-- 게시물, 댓글, 메시지와 상품은 신고 처리와 분쟁 대응을 위해 `status`와 soft delete를 사용한다.
-- 가격은 부동소수점이 아닌 최소 화폐 단위의 정수로 저장한다.
-- 판매 상품 상태 전이는 `draft → active → reserved → sold` 또는 `cancelled`로 제한한다.
-- 결제·정산·배송은 첫 서버 MVP ERD에서 제외하고 정책 확정 후 별도 도메인으로 추가한다.
-- 계정 탈퇴는 소유한 Storage 객체를 먼저 삭제한 뒤 현재 인증 사용자만 삭제하는 RPC를 호출하고, 외래 키 cascade와 기기 로컬 데이터 정리를 완료하는 순서로 처리한다.
+- 인증 주체는 Supabase `auth.users`이며 이메일 로그인과 추후 OAuth 공급자가 같은 사용자 ID를 공유한다. iCloud 상태와 서비스 로그인 상태는 서로 독립적이다.
+- `profile_measurements`는 본인만 읽고 수정할 수 있으며 공개 `profiles`와 분리한다.
+- `source_private_id`는 재게시·수정 상태를 찾기 위한 불투명 UUID다. 서버는 이 값으로 기기나 CloudKit의 원본을 조회할 수 없다.
+- `post_items`, `market_listings`, `market_listing_verifications`는 게시 시점의 개인 옷 데이터 스냅샷을 저장한다.
+- 좋아요, 북마크, 팔로우와 관심은 복합 기본 키 조인 테이블을 진실 원천으로 삼는다.
+- 메시지는 현재 텍스트 행으로 보존하며 별도의 구매 요청 테이블은 두지 않는다. 구매자와 판매자는 채팅으로 합의하고 판매자가 매물 상태를 `active → reserved → sold`로 변경한다.
+- 게시물·댓글·매물은 상태와 soft delete를 사용하고, 신고·차단·제재는 별도 운영 테이블과 RPC로 권한을 집행한다.
+- 가격은 부동소수점이 아닌 원 단위 정수로 저장하며 변경 전 가격은 데이터베이스 트리거가 기록한다.
+- 계정 탈퇴는 소유한 Storage 객체를 먼저 삭제한 뒤 현재 인증 사용자만 삭제하는 RPC를 호출하고, 외래 키 cascade와 기기 데이터 정리를 완료하는 순서로 처리한다.
 
 ## 5. 개인 데이터가 공개되는 과정
 
@@ -475,7 +516,7 @@ sequenceDiagram
 ### 단계 B — 커뮤니티 서버 최소 기능
 
 1. Supabase 개발·운영 프로젝트와 환경 변수 정책을 구성한다.
-2. Apple로 로그인과 Supabase Auth를 연결한다.
+2. 이메일·아이디 로그인을 Supabase Auth와 연결하고 Google·Kakao·Apple OAuth 운영 키를 후속 연결한다.
 3. PostgreSQL migration으로 프로필, 게시물과 반응 테이블을 생성한다.
    - 2026-09-12: `posts`, `post_media`, `post_items`, `comments`, `post_likes`, `bookmarks`, `follows`와 RLS를 개발 프로젝트에 적용했다.
    - 두 익명 사용자로 게시물 가시성, 작성자 권한, 댓글·좋아요·북마크·팔로우 정책을 검증했다.
