@@ -225,6 +225,7 @@ open WEARy.xcodeproj
 
 ## 남은 주요 작업
 
+- 실시간 가상 피팅 엔진 조사와 iPhone 스트리밍 PoC — [구현 계획](./REALTIME_VIRTUAL_TRYON_PLAN.md)
 - 실제 착장 데이터셋으로 Vision 후보 품질 측정
 - 실제 운영 관리자 계정 확정과 권한 부여
 - Google·Kakao·Apple OAuth 운영 키 발급 및 검수
@@ -237,6 +238,7 @@ open WEARy.xcodeproj
 - [제품 정의](./PRODUCT_CONCEPT.md)
 - [포트폴리오 정리](./PORTFOLIO.md)
 - [데이터 경계와 ERD](./DATA_ARCHITECTURE.md)
+- [실시간 가상 피팅 구현 계획](./REALTIME_VIRTUAL_TRYON_PLAN.md)
 - [콘텐츠 안전 정책](./CONTENT_SAFETY_POLICY.md)
 - [개인정보와 계정 탈퇴](./PRIVACY_DATA_DELETION.md)
 - [발표 시나리오](./DEMO_GUIDE.md)
