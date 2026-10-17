@@ -184,6 +184,7 @@ private struct CategoryVisibilityEvaluationView: View {
     @ObservedObject private var session = CategoryVisibilityEvaluationSession.shared
     @State private var photo: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var isBundledSample = false
     @State private var visibleCategories = Set<GarmentCategory>()
     @State private var annotationConfirmed = false
     @State private var result: CategoryVisibilityEvaluationResult?
@@ -198,6 +199,27 @@ private struct CategoryVisibilityEvaluationView: View {
                     Text("본인 또는 동의받은 사진에서 실제로 보이는 옷 종류를 모두 선택하세요. 옷장에 없는 옷도 포함하며, 옷이 없으면 아무것도 선택하지 않아도 됩니다.")
                         .font(.caption)
                     PhotosPicker("평가 사진 선택", selection: $photo, matching: .images)
+                    Button("샘플 상의 사진으로 평가 준비") {
+                        photoData = UIImage(named: "DemoWhiteTee")?.pngData()
+                        isBundledSample = true
+                        visibleCategories.removeAll()
+                        annotationConfirmed = false
+                        result = nil
+                        message = photoData == nil ? "샘플 사진을 읽지 못했어요." : nil
+                    }
+                    .accessibilityIdentifier("visibility.sample")
+                    if let photoData, let image = UIImage(data: photoData) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 220)
+                            .accessibilityLabel("평가할 사진 미리보기")
+                            .accessibilityIdentifier("visibility.preview")
+                    }
+                    if isBundledSample {
+                        Text("번들 샘플 · 계산 흐름 확인용이며 실제 사진 평가 모음에 포함하지 않아요.")
+                            .font(.caption)
+                    }
                     ForEach(GarmentCategory.allCases.sorted { $0.outfitSortOrder < $1.outfitSortOrder }) { category in
                         Toggle(category.rawValue, isOn: Binding(
                             get: { visibleCategories.contains(category) },
@@ -222,6 +244,8 @@ private struct CategoryVisibilityEvaluationView: View {
                     if isWorking { ProgressView("기기 안에서 비교 중…") }
                     if let message { Text(message).font(.caption) }
                     if let result {
+                        Text("평가 완료")
+                            .accessibilityIdentifier("visibility.completed")
                         metrics("추천 목록", result.suggestions)
                         metrics("자동 선택", result.selections)
                         LabeledContent("분석 시간", value: "\(result.elapsedMilliseconds.formatted(.number.precision(.fractionLength(0))))ms")
@@ -252,6 +276,7 @@ private struct CategoryVisibilityEvaluationView: View {
             .toolbar { Button("완료") { dismiss() } }
             .task(id: photo) {
                 photoData = nil
+                isBundledSample = false
                 visibleCategories.removeAll()
                 annotationConfirmed = false
                 result = nil
@@ -288,6 +313,7 @@ private struct CategoryVisibilityEvaluationView: View {
     private func evaluate() {
         guard !isWorking, annotationConfirmed, let photoData, !garments.isEmpty else { return }
         let truth = visibleCategories
+        let sample = isBundledSample
         let wardrobe = garments.map { GarmentSnapshot(id: $0.id, category: $0.category, name: $0.name,
             imageData: $0.imageData, cutoutImageData: $0.cutoutImageData) }
         isWorking = true
@@ -303,7 +329,9 @@ private struct CategoryVisibilityEvaluationView: View {
                 let measured = try CategoryVisibilityEvaluation.evaluate(
                     visibleCategories: truth, groups: groups, elapsedMilliseconds: elapsed)
                 result = measured
-                session.append(measured, photoKey: FeaturePrintCache<Int>.imageKey(photoData))
+                if !sample {
+                    session.append(measured, photoKey: FeaturePrintCache<Int>.imageKey(photoData))
+                }
             } catch is CancellationError {
             } catch { message = "평가를 완료하지 못했어요. 사진과 옷장을 확인해 주세요." }
         }
