@@ -151,6 +151,37 @@ struct OutfitFlowTests {
         #expect(result.isEmpty)
     }
 
+    @Test("평가 경로는 손상된 사진을 빈 예측으로 숨기지 않는다")
+    @MainActor
+    func evaluationPropagatesInvalidPhotoFailure() async {
+        do {
+            _ = try await DeviceOutfitAnalyzer().analyzeForEvaluation(
+                photoData: Data([0, 1, 2]),
+                wardrobe: [.init(id: UUID(), category: .top, name: "상의")])
+            Issue.record("손상된 사진은 평가 결과가 아닌 오류여야 한다")
+        } catch OutfitAnalysisError.invalidOutfitPhoto {
+            // Normal recording still returns [] for this input; evaluation must not.
+        } catch {
+            Issue.record("예상과 다른 오류: \(error)")
+        }
+    }
+
+    @Test("평가 경로는 비교 사진 없는 옷장을 실행 실패로 구분한다")
+    @MainActor
+    func evaluationPropagatesMissingReferenceImages() async throws {
+        let data = try #require(solidImageData(red: 0.18, green: 0.42, blue: 0.76))
+        do {
+            _ = try await DeviceOutfitAnalyzer().analyzeForEvaluation(
+                photoData: data,
+                wardrobe: [.init(id: UUID(), category: .top, name: "사진 없는 상의")])
+            Issue.record("비교 사진이 없으면 결과를 집계하면 안 된다")
+        } catch OutfitAnalysisError.noComparableGarmentImages {
+        } catch {
+            // Some simulators cannot execute Vision at all. This must still throw.
+            #expect(!(error is CancellationError))
+        }
+    }
+
     @Test("착장 사진 품질 검사는 사람·머리·발 노출을 구분한다")
     func evaluatesFullBodyPhotoQuality() {
         let missingPerson = OutfitPhotoQualityAssessment.evaluate(

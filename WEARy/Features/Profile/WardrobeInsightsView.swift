@@ -242,7 +242,10 @@ private struct CategoryVisibilityEvaluationView: View {
                         .disabled(isWorking || photoData == nil || !annotationConfirmed || garments.isEmpty || result != nil)
                     if garments.isEmpty { Text("비교할 옷을 먼저 옷장에 등록해 주세요.") }
                     if isWorking { ProgressView("기기 안에서 비교 중…") }
-                    if let message { Text(message).font(.caption) }
+                    if let message {
+                        Text(message).font(.caption)
+                            .accessibilityIdentifier("visibility.error")
+                    }
                     if let result {
                         Text("평가 완료")
                             .accessibilityIdentifier("visibility.completed")
@@ -253,7 +256,7 @@ private struct CategoryVisibilityEvaluationView: View {
                         Text("추천: \(categoryNames(result.suggestedCategories))")
                         Text("자동 선택: \(categoryNames(result.selectedCategories))")
                     }
-                    Text("오추천은 사진에 없는 종류를 추천한 경우, 누락은 보이는 종류를 추천하지 않은 경우예요. 종류가 맞아도 같은 옷이라는 뜻은 아니에요. 분석 실패의 빈 결과도 누락으로 집계합니다.")
+                    Text("오추천은 사진에 없는 종류를 추천한 경우, 누락은 보이는 종류를 추천하지 않은 경우예요. 종류가 맞아도 같은 옷이라는 뜻은 아니에요. 분석이 성공한 빈 추천은 누락으로 집계하지만, 실행 실패는 오류로 안내하고 평가 모음에서 제외합니다.")
                         .font(.caption)
                 }
                 Section("실행 중 평가 모음 · 최근 50장") {
@@ -322,7 +325,7 @@ private struct CategoryVisibilityEvaluationView: View {
             defer { isWorking = false }
             do {
                 let started = ContinuousClock.now
-                let groups = try await DeviceOutfitAnalyzer().analyze(photoData: photoData, wardrobe: wardrobe)
+                let groups = try await DeviceOutfitAnalyzer().analyzeForEvaluation(photoData: photoData, wardrobe: wardrobe)
                 try Task.checkCancellation()
                 let duration = started.duration(to: .now).components
                 let elapsed = Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15
@@ -333,7 +336,11 @@ private struct CategoryVisibilityEvaluationView: View {
                     session.append(measured, photoKey: FeaturePrintCache<Int>.imageKey(photoData))
                 }
             } catch is CancellationError {
-            } catch { message = "평가를 완료하지 못했어요. 사진과 옷장을 확인해 주세요." }
+            } catch let error as OutfitAnalysisError {
+                message = "평가에서 제외했어요. \(error.localizedDescription)"
+            } catch {
+                message = "Vision 분석을 실행하지 못해 평가에서 제외했어요. 기기에서 다시 시도해 주세요."
+            }
         }
     }
 }

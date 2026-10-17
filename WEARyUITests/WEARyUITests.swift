@@ -167,7 +167,12 @@ final class WEARyUITests: XCTestCase {
         for _ in 0..<5 where !app.buttons["visibility.evaluate"].isHittable { app.swipeUp() }
         XCTAssertTrue(app.buttons["visibility.evaluate"].isEnabled)
         app.buttons["visibility.evaluate"].tap()
-        XCTAssertTrue(app.staticTexts["visibility.completed"].waitForExistence(timeout: 20))
+        let completed = app.staticTexts["visibility.completed"]
+        let failure = app.staticTexts["visibility.error"]
+        let finished = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in completed.exists || failure.exists }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 20), .completed)
+        XCTAssertNotEqual(completed.exists, failure.exists)
         let result = XCTAttachment(screenshot: app.screenshot())
         result.name = "category-visibility-sample-result"
         result.lifetime = .keepAlways

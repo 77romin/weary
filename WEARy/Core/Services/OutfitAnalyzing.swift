@@ -320,6 +320,22 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         photoData: Data?,
         wardrobe: [GarmentSnapshot]
     ) async throws -> [DetectedGarmentGroup] {
+        try await analyze(photoData: photoData, wardrobe: wardrobe, propagatePhotoFailure: false)
+    }
+
+    /// Evaluations must distinguish an unavailable analyzer from a valid empty prediction.
+    func analyzeForEvaluation(
+        photoData: Data,
+        wardrobe: [GarmentSnapshot]
+    ) async throws -> [DetectedGarmentGroup] {
+        try await analyze(photoData: photoData, wardrobe: wardrobe, propagatePhotoFailure: true)
+    }
+
+    private func analyze(
+        photoData: Data?,
+        wardrobe: [GarmentSnapshot],
+        propagatePhotoFailure: Bool
+    ) async throws -> [DetectedGarmentGroup] {
         guard !wardrobe.isEmpty else { throw OutfitAnalysisError.emptyWardrobe }
         let started = ContinuousClock.now
         guard let photoData else {
@@ -358,6 +374,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                if propagatePhotoFailure { throw error }
                 // Preserve manual candidate choices when a provider fails, but do
                 // not silently turn unverified candidates into confirmed selections.
                 return try GarmentVisibilityFilter.apply([], to: report.groups)
@@ -366,6 +383,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
             throw CancellationError()
         } catch {
             OutfitAnalysisDiagnostics.shared.record(started: started, performance: nil)
+            if propagatePhotoFailure { throw error }
             // A real photo that could not be analyzed must never receive demo outfits.
             return []
         }
