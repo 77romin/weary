@@ -9,6 +9,26 @@ import CoreML
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("수동 피팅 위치와 크기는 화면 기준 범위로 제한한다")
+    func fittingPlacementClampsToViewport() {
+        var placement = FittingOverlayPlacement()
+        placement.update(x: -2, y: 3, scale: 8)
+        #expect(placement.x == 0 && placement.y == 1 && placement.scale == 1)
+        placement.update(scale: -1)
+        #expect(placement.scale == 0.2)
+    }
+
+    @Test("수동 피팅은 유효하지 않은 수치를 무시하고 초기 위치로 복원한다")
+    func fittingPlacementRejectsNonFiniteAndResets() {
+        var placement = FittingOverlayPlacement()
+        let initial = placement
+        placement.update(x: .nan, y: .infinity, scale: -.infinity)
+        #expect(placement == initial)
+        placement.update(x: 0.1, y: 0.9, scale: 0.3)
+        placement.reset()
+        #expect(placement == initial)
+    }
+
     /// Capability probe, not an accuracy test. Failures are reported by stage so
     /// an unavailable simulator is never mistaken for a recognition miss.
     @Test("Vision 런타임의 기본·CPU 실행 가능 여부를 단계별 진단한다")

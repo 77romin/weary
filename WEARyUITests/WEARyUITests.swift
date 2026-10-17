@@ -9,6 +9,68 @@ final class WEARyUITests: XCTestCase {
         return app
     }
 
+    func testVirtualFittingManualPreviewAndReset() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["옷장"].tap()
+        let search = app.searchFields.firstMatch
+        if !search.isHittable { app.swipeDown() }
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        search.tap()
+        search.typeText("화이트 베이비 티")
+        let garment = app.buttons["wardrobe.garment.화이트 베이비 티"]
+        XCTAssertTrue(garment.waitForExistence(timeout: 3))
+        garment.tap()
+        let entry = app.buttons["garment.tryOn"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        XCTAssertTrue(entry.isEnabled)
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["가상 피팅 · 실험"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["fitting.stage"].exists)
+        app.buttons["fitting.sample"].tap()
+        XCTAssertTrue(app.staticTexts["샘플 배경 · 라이브 카메라가 아닙니다"].exists)
+        XCTAssertTrue(app.images["fitting.overlay"].exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "manual-fitting-sample-not-live"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        let scale = app.sliders["fitting.scale"]
+        for _ in 0..<4 where !scale.isHittable { app.swipeUp() }
+        let initialScale = scale.value as? String
+        scale.adjust(toNormalizedSliderPosition: 0.95)
+        XCTAssertNotEqual(scale.value as? String, initialScale)
+        for _ in 0..<4 where !app.buttons["fitting.reset"].isHittable { app.swipeUp() }
+        app.buttons["fitting.reset"].tap()
+        XCTAssertEqual(scale.value as? String, initialScale)
+        for _ in 0..<5 where !app.buttons["fitting.start"].isHittable { app.swipeDown() }
+#if targetEnvironment(simulator)
+        app.buttons["fitting.start"].tap()
+        XCTAssertTrue(app.staticTexts["이 환경에서는 전면 카메라를 사용할 수 없어요. 샘플로 체험해 보세요."].waitForExistence(timeout: 3))
+        app.buttons["fitting.stop"].tap()
+#endif
+        app.buttons["fitting.close"].tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        entry.tap()
+        XCTAssertTrue(app.staticTexts["카메라를 켜거나 샘플 배경으로 체험하세요."].waitForExistence(timeout: 3))
+        app.buttons["fitting.close"].tap()
+    }
+
+    func testVirtualFittingIsDisabledForNonTopGarment() throws {
+        let app = launchApp()
+        app.tabBars.buttons["옷장"].tap()
+        let search = app.searchFields.firstMatch
+        if !search.isHittable { app.swipeDown() }
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        search.tap()
+        search.typeText("커브드 데님")
+        app.buttons["wardrobe.garment.커브드 데님"].tap()
+        let entry = app.buttons["garment.tryOn"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        XCTAssertFalse(entry.isEnabled)
+        XCTAssertTrue(app.staticTexts["1단계는 사진이 있는 상의만 지원해요."].exists)
+    }
+
     func testSignedOutLaunchShowsAuthenticationOptions() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
