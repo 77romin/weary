@@ -4,6 +4,7 @@ import CryptoKit
 import Darwin
 import ImageIO
 import Vision
+import CoreML
 
 struct GarmentSnapshot: Sendable {
     let id: UUID
@@ -59,7 +60,7 @@ struct DetectedGarmentGroup: Identifiable, Sendable {
 }
 
 enum OutfitAnalysisError: LocalizedError {
-    case emptyWardrobe, invalidOutfitPhoto, noComparableGarmentImages
+    case emptyWardrobe, invalidOutfitPhoto, noComparableGarmentImages, visionComputeUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -69,6 +70,8 @@ enum OutfitAnalysisError: LocalizedError {
             "착장 사진을 분석할 수 없어요. 다른 사진을 사용해 주세요."
         case .noComparableGarmentImages:
             "비교할 수 있는 옷 사진이 없어요."
+        case .visionComputeUnavailable:
+            "이 시뮬레이터에서 Vision CPU 실행을 준비하지 못했어요. 실제 기기에서 확인해 주세요."
         }
     }
 }
@@ -467,6 +470,7 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
 
     fileprivate nonisolated static func categoryHints(from image: CGImage) -> [GarmentCategory: Float] {
         let request = VNClassifyImageRequest()
+        guard (try? configureImageCompute(request)) != nil else { return [:] }
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         guard (try? handler.perform([request])) != nil else { return [:] }
         let classifications = (request.results ?? []).prefix(20).map {
@@ -546,12 +550,27 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
         for image: CGImage
     ) throws -> VNFeaturePrintObservation {
         let request = VNGenerateImageFeaturePrintRequest()
+        try configureImageCompute(request)
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         try handler.perform([request])
         guard let observation = request.results?.first as? VNFeaturePrintObservation else {
             throw OutfitAnalysisError.invalidOutfitPhoto
         }
         return observation
+    }
+
+    /// The current simulator's default image backend fails to create its Espresso
+    /// context. CPU execution was verified independently for these image requests.
+    /// Real devices retain Vision's automatic hardware selection.
+    private nonisolated static func configureImageCompute(_ request: VNRequest) throws {
+#if targetEnvironment(simulator)
+        let supported = try request.supportedComputeStageDevices
+        guard let cpu = supported[.main]?.first(where: {
+            if case .cpu = $0 { return true }
+            return false
+        }) else { throw OutfitAnalysisError.visionComputeUnavailable }
+        request.setComputeDevice(cpu, for: .main)
+#endif
     }
 
     fileprivate nonisolated static func downsampledImage(from data: Data) -> CGImage? {
