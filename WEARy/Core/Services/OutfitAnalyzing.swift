@@ -231,6 +231,56 @@ protocol OutfitAnalyzing {
     ) async throws -> [DetectedGarmentGroup]
 }
 
+/// Provider-neutral contract for an explicitly enabled Jev/vision second pass.
+/// Evidence is categorical: a model score must not be treated as calibrated accuracy.
+enum GarmentVisibility: String, Codable, Sendable {
+    case present, absent, uncertain
+}
+
+struct GarmentVisibilityDecision: Sendable {
+    let category: GarmentCategory
+    let visibility: GarmentVisibility
+}
+
+@MainActor
+protocol GarmentVisibilityVerifying {
+    func verify(photoData: Data, categories: [GarmentCategory]) async throws -> [GarmentVisibilityDecision]
+}
+
+enum GarmentVisibilityValidationError: Error {
+    case duplicateCategory, unexpectedCategory
+}
+
+enum GarmentVisibilityFilter {
+    /// Missing evidence is uncertainty, never permission to auto-select a garment.
+    nonisolated static func apply(
+        _ decisions: [GarmentVisibilityDecision],
+        to groups: [DetectedGarmentGroup]
+    ) throws -> [DetectedGarmentGroup] {
+        let allowed = Set(groups.map(\.category))
+        var evidence: [GarmentCategory: GarmentVisibility] = [:]
+        for decision in decisions {
+            guard allowed.contains(decision.category) else {
+                throw GarmentVisibilityValidationError.unexpectedCategory
+            }
+            guard evidence[decision.category] == nil else {
+                throw GarmentVisibilityValidationError.duplicateCategory
+            }
+            evidence[decision.category] = decision.visibility
+        }
+        return groups.compactMap { group in
+            switch evidence[group.category] ?? .uncertain {
+            case .absent: return nil
+            case .present: return group
+            case .uncertain:
+                var pending = group
+                pending.selectedGarmentID = nil
+                return pending
+            }
+        }
+    }
+}
+
 @MainActor
 struct DemoOutfitAnalyzer: OutfitAnalyzing {
     func analyze(
@@ -262,6 +312,8 @@ struct DemoOutfitAnalyzer: OutfitAnalyzing {
 @MainActor
 struct DeviceOutfitAnalyzer: OutfitAnalyzing {
     private let fallback = DemoOutfitAnalyzer()
+    // Nil by default: no photo leaves the device without an explicit opt-in integration.
+    var visibilityVerifier: (any GarmentVisibilityVerifying)? = nil
     nonisolated static let hatCategoryHintThreshold: Float = 0.015
 
     func analyze(
@@ -295,13 +347,27 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
                 return try await DeviceVisionEngine.shared.analyze(photoData: photoData, wardrobe: wardrobe)
             }.value
             OutfitAnalysisDiagnostics.shared.record(started: started, performance: report.performance)
-            return report.groups
+            guard let visibilityVerifier else { return report.groups }
+            do {
+                let decisions = try await visibilityVerifier.verify(
+                    photoData: photoData,
+                    categories: report.groups.map(\.category)
+                )
+                try Task.checkCancellation()
+                return try GarmentVisibilityFilter.apply(decisions, to: report.groups)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Preserve manual candidate choices when a provider fails, but do
+                // not silently turn unverified candidates into confirmed selections.
+                return try GarmentVisibilityFilter.apply([], to: report.groups)
+            }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            let groups = try await fallback.analyze(photoData: photoData, wardrobe: wardrobe)
             OutfitAnalysisDiagnostics.shared.record(started: started, performance: nil)
-            return groups
+            // A real photo that could not be analyzed must never receive demo outfits.
+            return []
         }
     }
 

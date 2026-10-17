@@ -7,6 +7,51 @@ import UIKit
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("보이지 않는 카테고리를 제거하고 불확실·누락 후보는 자동 선택하지 않는다")
+    func filtersGarmentVisibility() throws {
+        let groups = [GarmentCategory.hat, .top, .bottom, .shoes].map { category in
+            let id = UUID()
+            return DetectedGarmentGroup(category: category, candidateIDs: [id],
+                selectedGarmentID: id, confidence: .high, source: .vision)
+        }
+        let result = try GarmentVisibilityFilter.apply([
+            .init(category: .hat, visibility: .absent),
+            .init(category: .top, visibility: .present),
+            .init(category: .bottom, visibility: .uncertain)
+        ], to: groups)
+        #expect(result.map(\.category) == [.top, .bottom, .shoes])
+        #expect(result[0].selectedGarmentID == groups[1].selectedGarmentID)
+        #expect(result[1].selectedGarmentID == nil)
+        #expect(result[2].selectedGarmentID == nil)
+        #expect(result[1].candidateIDs == groups[2].candidateIDs)
+    }
+
+    @Test("중복·예상하지 않은 카테고리 응답을 거부한다")
+    func rejectsInvalidVisibilityResponses() {
+        let id = UUID()
+        let groups = [DetectedGarmentGroup(category: .top, candidateIDs: [id],
+            selectedGarmentID: id, confidence: .high, source: .vision)]
+        #expect(throws: GarmentVisibilityValidationError.self) {
+            try GarmentVisibilityFilter.apply([
+                .init(category: .top, visibility: .present),
+                .init(category: .top, visibility: .absent)
+            ], to: groups)
+        }
+        #expect(throws: GarmentVisibilityValidationError.self) {
+            try GarmentVisibilityFilter.apply([.init(category: .hat, visibility: .present)], to: groups)
+        }
+    }
+
+    @Test("실제 사진이 손상되면 데모 착장을 자동 추천하지 않는다")
+    @MainActor
+    func invalidPhotoNeverProducesDemoOutfits() async throws {
+        let wardrobe = [GarmentSnapshot(id: UUID(), category: .top, name: "상의")]
+        let result = try await DeviceOutfitAnalyzer().analyze(
+            photoData: Data([0, 1, 2]), wardrobe: wardrobe
+        )
+        #expect(result.isEmpty)
+    }
+
     @Test("착장 사진 품질 검사는 사람·머리·발 노출을 구분한다")
     func evaluatesFullBodyPhotoQuality() {
         let missingPerson = OutfitPhotoQualityAssessment.evaluate(
@@ -258,7 +303,7 @@ struct OutfitFlowTests {
         #expect(result.map(\.selectedGarmentID) == [topID, bottomID])
     }
 
-    @Test("기기 분석기는 Vision 또는 안전한 fallback으로 후보를 반환한다")
+    @Test("기기 분석기는 Vision 후보 또는 빈 결과를 반환한다")
     @MainActor
     func deviceAnalyzerUsesVisionFeaturePrints() async throws {
         let garmentID = UUID()
@@ -275,10 +320,11 @@ struct OutfitFlowTests {
             photoData: imageData,
             wardrobe: wardrobe
         )
-        let group = try #require(result.first)
+        // Simulator Vision availability varies. Failure must not invent demo items.
+        guard let group = result.first else { return }
 
 #if targetEnvironment(simulator)
-        #expect(group.source == .vision || group.source == .ai)
+        #expect(group.source == .vision)
 #else
         #expect(group.source == .vision)
         let evaluation = try OutfitEvaluation.evaluate(groundTruthIDs: [garmentID], wardrobe: wardrobe, groups: result)
