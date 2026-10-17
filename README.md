@@ -67,8 +67,12 @@
 - 사용자가 최종 후보를 확정하는 Human-in-the-loop 방식
 - 사진과 특징값을 서버로 전송하지 않는 온디바이스 처리
 - MY의 추천 실험실에서 처리 시간·캐시·입력 품질 지표 확인
+- MY의 보이는 옷 종류 평가에서 추천·자동 선택의 오추천·누락과 정밀도·재현율·F1 측정 및 JSON 공유
+- 후속 비전 판단용 카테고리 가시성 인터페이스: 보이지 않는 항목 제외, 불확실·누락 항목 자동 선택 해제
+- 실제 사진 분석 실패 시 데모 착장을 대신 추천하지 않고 직접 선택으로 연결
 
 현재 방식은 범용 의류 탐지 모델이 아니라 가벼운 PoC입니다. 실제 정확도는 동의받은 착장 데이터셋으로 별도 검증해야 합니다.
+Jev·외부 비전 모델은 아직 연결하지 않았으며, 가시성 검증 인터페이스는 기본 비활성 상태입니다. 현재 사진 분석은 계속 온디바이스에서 처리합니다.
 
 ### 커뮤니티
 
@@ -225,6 +229,7 @@ open WEARy.xcodeproj
 
 ## 남은 주요 작업
 
+- 실시간 가상 피팅 엔진 조사와 iPhone 스트리밍 PoC — [구현 계획](./REALTIME_VIRTUAL_TRYON_PLAN.md)
 - 실제 착장 데이터셋으로 Vision 후보 품질 측정
 - 실제 운영 관리자 계정 확정과 권한 부여
 - Google·Kakao·Apple OAuth 운영 키 발급 및 검수
@@ -236,7 +241,9 @@ open WEARy.xcodeproj
 
 - [제품 정의](./PRODUCT_CONCEPT.md)
 - [포트폴리오 정리](./PORTFOLIO.md)
+- [문제 해결·의사결정 및 정량 근거 기록](./DEVELOPMENT_DECISIONS.md)
 - [데이터 경계와 ERD](./DATA_ARCHITECTURE.md)
+- [실시간 가상 피팅 구현 계획](./REALTIME_VIRTUAL_TRYON_PLAN.md)
 - [콘텐츠 안전 정책](./CONTENT_SAFETY_POLICY.md)
 - [개인정보와 계정 탈퇴](./PRIVACY_DATA_DELETION.md)
 - [발표 시나리오](./DEMO_GUIDE.md)

@@ -231,6 +231,56 @@ protocol OutfitAnalyzing {
     ) async throws -> [DetectedGarmentGroup]
 }
 
+/// Provider-neutral contract for an explicitly enabled Jev/vision second pass.
+/// Evidence is categorical: a model score must not be treated as calibrated accuracy.
+enum GarmentVisibility: String, Codable, Sendable {
+    case present, absent, uncertain
+}
+
+struct GarmentVisibilityDecision: Sendable {
+    let category: GarmentCategory
+    let visibility: GarmentVisibility
+}
+
+@MainActor
+protocol GarmentVisibilityVerifying {
+    func verify(photoData: Data, categories: [GarmentCategory]) async throws -> [GarmentVisibilityDecision]
+}
+
+enum GarmentVisibilityValidationError: Error {
+    case duplicateCategory, unexpectedCategory
+}
+
+enum GarmentVisibilityFilter {
+    /// Missing evidence is uncertainty, never permission to auto-select a garment.
+    nonisolated static func apply(
+        _ decisions: [GarmentVisibilityDecision],
+        to groups: [DetectedGarmentGroup]
+    ) throws -> [DetectedGarmentGroup] {
+        let allowed = Set(groups.map(\.category))
+        var evidence: [GarmentCategory: GarmentVisibility] = [:]
+        for decision in decisions {
+            guard allowed.contains(decision.category) else {
+                throw GarmentVisibilityValidationError.unexpectedCategory
+            }
+            guard evidence[decision.category] == nil else {
+                throw GarmentVisibilityValidationError.duplicateCategory
+            }
+            evidence[decision.category] = decision.visibility
+        }
+        return groups.compactMap { group in
+            switch evidence[group.category] ?? .uncertain {
+            case .absent: return nil
+            case .present: return group
+            case .uncertain:
+                var pending = group
+                pending.selectedGarmentID = nil
+                return pending
+            }
+        }
+    }
+}
+
 @MainActor
 struct DemoOutfitAnalyzer: OutfitAnalyzing {
     func analyze(
@@ -262,6 +312,8 @@ struct DemoOutfitAnalyzer: OutfitAnalyzing {
 @MainActor
 struct DeviceOutfitAnalyzer: OutfitAnalyzing {
     private let fallback = DemoOutfitAnalyzer()
+    // Nil by default: no photo leaves the device without an explicit opt-in integration.
+    var visibilityVerifier: (any GarmentVisibilityVerifying)? = nil
     nonisolated static let hatCategoryHintThreshold: Float = 0.015
 
     func analyze(
@@ -295,13 +347,27 @@ struct DeviceOutfitAnalyzer: OutfitAnalyzing {
                 return try await DeviceVisionEngine.shared.analyze(photoData: photoData, wardrobe: wardrobe)
             }.value
             OutfitAnalysisDiagnostics.shared.record(started: started, performance: report.performance)
-            return report.groups
+            guard let visibilityVerifier else { return report.groups }
+            do {
+                let decisions = try await visibilityVerifier.verify(
+                    photoData: photoData,
+                    categories: report.groups.map(\.category)
+                )
+                try Task.checkCancellation()
+                return try GarmentVisibilityFilter.apply(decisions, to: report.groups)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Preserve manual candidate choices when a provider fails, but do
+                // not silently turn unverified candidates into confirmed selections.
+                return try GarmentVisibilityFilter.apply([], to: report.groups)
+            }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            let groups = try await fallback.analyze(photoData: photoData, wardrobe: wardrobe)
             OutfitAnalysisDiagnostics.shared.record(started: started, performance: nil)
-            return groups
+            // A real photo that could not be analyzed must never receive demo outfits.
+            return []
         }
     }
 
@@ -806,6 +872,115 @@ enum VisionCacheBenchmark {
             }
         }
         return status == KERN_SUCCESS ? info.phys_footprint : nil
+    }
+}
+
+/// Micro counts across photo/category pairs. Undefined rates stay nil, not 100%.
+struct CategoryVisibilityMetrics: Codable, Equatable, Sendable {
+    let truePositive: Int
+    let falsePositive: Int
+    let falseNegative: Int
+    let trueNegative: Int
+
+    var precision: Double? { ratio(truePositive, truePositive + falsePositive) }
+    var recall: Double? { ratio(truePositive, truePositive + falseNegative) }
+    var f1: Double? { ratio(2 * truePositive, 2 * truePositive + falsePositive + falseNegative) }
+
+    private func ratio(_ numerator: Int, _ denominator: Int) -> Double? {
+        denominator == 0 ? nil : Double(numerator) / Double(denominator)
+    }
+
+    nonisolated static func measure(
+        truth: Set<GarmentCategory>, predicted: Set<GarmentCategory>
+    ) -> Self {
+        Self(truePositive: truth.intersection(predicted).count,
+             falsePositive: predicted.subtracting(truth).count,
+             falseNegative: truth.subtracting(predicted).count,
+             trueNegative: Set(GarmentCategory.allCases).subtracting(truth.union(predicted)).count)
+    }
+
+    nonisolated static func aggregate(_ values: [Self]) -> Self {
+        Self(truePositive: values.reduce(0) { $0 + $1.truePositive },
+             falsePositive: values.reduce(0) { $0 + $1.falsePositive },
+             falseNegative: values.reduce(0) { $0 + $1.falseNegative },
+             trueNegative: values.reduce(0) { $0 + $1.trueNegative })
+    }
+}
+
+struct CategoryVisibilityEvaluationResult: Identifiable, Codable, Sendable {
+    let id: UUID
+    let evaluatedAt: Date
+    let analyzerVersion: String
+    let visibleCategories: [GarmentCategory]
+    let suggestedCategories: [GarmentCategory]
+    let selectedCategories: [GarmentCategory]
+    let elapsedMilliseconds: Double
+
+    var suggestions: CategoryVisibilityMetrics {
+        .measure(truth: Set(visibleCategories), predicted: Set(suggestedCategories))
+    }
+    var selections: CategoryVisibilityMetrics {
+        .measure(truth: Set(visibleCategories), predicted: Set(selectedCategories))
+    }
+}
+
+enum CategoryVisibilityEvaluationError: Error {
+    case demoResult, invalidDuration
+}
+
+enum CategoryVisibilityEvaluation {
+    nonisolated static func evaluate(
+        visibleCategories: Set<GarmentCategory>, groups: [DetectedGarmentGroup],
+        elapsedMilliseconds: Double
+    ) throws -> CategoryVisibilityEvaluationResult {
+        guard elapsedMilliseconds.isFinite, elapsedMilliseconds >= 0 else {
+            throw CategoryVisibilityEvaluationError.invalidDuration
+        }
+        guard !groups.contains(where: { $0.source == .ai }) else {
+            throw CategoryVisibilityEvaluationError.demoResult
+        }
+        let suggestions = Set(groups.map(\.category))
+        let selections = Set(groups.filter {
+            guard let selected = $0.selectedGarmentID else { return false }
+            return $0.candidateIDs.contains(selected)
+        }.map(\.category))
+        func ordered(_ values: Set<GarmentCategory>) -> [GarmentCategory] {
+            values.sorted { $0.outfitSortOrder < $1.outfitSortOrder }
+        }
+        return CategoryVisibilityEvaluationResult(
+            id: UUID(), evaluatedAt: .now,
+            analyzerVersion: "Vision-featureprint-\(VNGenerateImageFeaturePrintRequest.defaultRevision)-visibility-v1",
+            visibleCategories: ordered(visibleCategories), suggestedCategories: ordered(suggestions),
+            selectedCategories: ordered(selections), elapsedMilliseconds: elapsedMilliseconds
+        )
+    }
+}
+
+@MainActor
+final class CategoryVisibilityEvaluationSession: ObservableObject {
+    static let shared = CategoryVisibilityEvaluationSession()
+    @Published private(set) var results: [CategoryVisibilityEvaluationResult] = []
+    private var photoResultIDs: [String: UUID] = [:]
+    var suggestions: CategoryVisibilityMetrics { .aggregate(results.map(\.suggestions)) }
+    var selections: CategoryVisibilityMetrics { .aggregate(results.map(\.selections)) }
+
+    func append(_ result: CategoryVisibilityEvaluationResult, photoKey: String) {
+        if let previous = photoResultIDs[photoKey] { results.removeAll { $0.id == previous } }
+        guard !results.contains(where: { $0.id == result.id }) else { return }
+        results.append(result)
+        photoResultIDs[photoKey] = result.id
+        if results.count > 50 { results.removeFirst(results.count - 50) }
+        let retainedIDs = Set(results.map(\.id))
+        photoResultIDs = photoResultIDs.filter { retainedIDs.contains($0.value) }
+    }
+
+    func clear() { results.removeAll(); photoResultIDs.removeAll() }
+
+    var exportJSON: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return (try? String(data: encoder.encode(results), encoding: .utf8)) ?? "[]"
     }
 }
 

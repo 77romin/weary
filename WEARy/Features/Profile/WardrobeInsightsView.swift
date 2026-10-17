@@ -95,6 +95,7 @@ struct AIRecommendationInsightsView: View {
     @ObservedObject private var photoQuality = OutfitPhotoQualityDiagnostics.shared
     @State private var showingBenchmark = false
     @State private var showingEvaluation = false
+    @State private var showingVisibilityEvaluation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -113,6 +114,9 @@ struct AIRecommendationInsightsView: View {
             Button("정답 옷으로 추천 평가") { showingEvaluation = true }
                 .font(.subheadline.weight(.semibold))
                 .accessibilityIdentifier("profile.visionEvaluation")
+            Button("보이는 옷 종류 평가") { showingVisibilityEvaluation = true }
+                .font(.subheadline.weight(.semibold))
+                .accessibilityIdentifier("profile.visibilityEvaluation")
             if let elapsed = diagnostics.elapsedMilliseconds {
                 Text("최근 분석 \(elapsed.formatted(.number.precision(.fractionLength(0))))ms · \(diagnostics.performance == nil ? "기본 후보 전환" : "Vision 비교")")
                     .font(.caption)
@@ -170,6 +174,139 @@ struct AIRecommendationInsightsView: View {
         .accessibilityIdentifier("profile.aiRecommendationInsights")
         .sheet(isPresented: $showingBenchmark) { VisionBenchmarkView() }
         .sheet(isPresented: $showingEvaluation) { VisionEvaluationView() }
+        .sheet(isPresented: $showingVisibilityEvaluation) { CategoryVisibilityEvaluationView() }
+    }
+}
+
+private struct CategoryVisibilityEvaluationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query private var garments: [Garment]
+    @ObservedObject private var session = CategoryVisibilityEvaluationSession.shared
+    @State private var photo: PhotosPickerItem?
+    @State private var photoData: Data?
+    @State private var visibleCategories = Set<GarmentCategory>()
+    @State private var annotationConfirmed = false
+    @State private var result: CategoryVisibilityEvaluationResult?
+    @State private var message: String?
+    @State private var isWorking = false
+    @State private var evaluationTask: Task<Void, Never>?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("1. 사진과 정답 종류 지정") {
+                    Text("본인 또는 동의받은 사진에서 실제로 보이는 옷 종류를 모두 선택하세요. 옷장에 없는 옷도 포함하며, 옷이 없으면 아무것도 선택하지 않아도 됩니다.")
+                        .font(.caption)
+                    PhotosPicker("평가 사진 선택", selection: $photo, matching: .images)
+                    ForEach(GarmentCategory.allCases.sorted { $0.outfitSortOrder < $1.outfitSortOrder }) { category in
+                        Toggle(category.rawValue, isOn: Binding(
+                            get: { visibleCategories.contains(category) },
+                            set: { selected in
+                                if selected { visibleCategories.insert(category) }
+                                else { visibleCategories.remove(category) }
+                                annotationConfirmed = false
+                                result = nil
+                            }
+                        ))
+                    }
+                    Toggle("추천을 보기 전에 정답을 확인했어요", isOn: $annotationConfirmed)
+                    Text("사진은 기기 안에서 처리합니다. 외부 Jev·비전 모델은 아직 연결하지 않았어요.")
+                        .font(.caption)
+                }
+                .disabled(isWorking)
+                Section("2. Vision 기준선 평가") {
+                    Button("카테고리 평가 실행") { evaluate() }
+                        .accessibilityIdentifier("visibility.evaluate")
+                        .disabled(isWorking || photoData == nil || !annotationConfirmed || garments.isEmpty || result != nil)
+                    if garments.isEmpty { Text("비교할 옷을 먼저 옷장에 등록해 주세요.") }
+                    if isWorking { ProgressView("기기 안에서 비교 중…") }
+                    if let message { Text(message).font(.caption) }
+                    if let result {
+                        metrics("추천 목록", result.suggestions)
+                        metrics("자동 선택", result.selections)
+                        LabeledContent("분석 시간", value: "\(result.elapsedMilliseconds.formatted(.number.precision(.fractionLength(0))))ms")
+                        Text("정답: \(categoryNames(result.visibleCategories))")
+                        Text("추천: \(categoryNames(result.suggestedCategories))")
+                        Text("자동 선택: \(categoryNames(result.selectedCategories))")
+                    }
+                    Text("오추천은 사진에 없는 종류를 추천한 경우, 누락은 보이는 종류를 추천하지 않은 경우예요. 종류가 맞아도 같은 옷이라는 뜻은 아니에요. 분석 실패의 빈 결과도 누락으로 집계합니다.")
+                        .font(.caption)
+                }
+                Section("실행 중 평가 모음 · 최근 50장") {
+                    Text("평가 사진 \(session.results.count)장")
+                    metrics("추천 목록 합계", session.suggestions)
+                    metrics("자동 선택 합계", session.selections)
+                    Text("정밀도 = 맞는 추천 / 전체 추천, 재현율 = 찾은 종류 / 정답 종류. 분모가 0이면 측정 없음으로 표시합니다. 합계 비율은 사진·종류별 건수를 합산한 값입니다.")
+                        .font(.caption)
+                    Text("같은 사진은 최신 결과로 교체하고 앱 종료 시 평가 모음은 사라집니다. 공유에는 사진·옷 이름·사진 해시 없이 카테고리·시간·버전만 포함합니다. 실제 정확도 성과는 직접 모은 평가 사진으로 확인해야 합니다.")
+                        .font(.caption)
+                    ShareLink("카테고리 평가 JSON 공유", item: session.exportJSON)
+                        .accessibilityIdentifier("visibility.share")
+                        .disabled(session.results.isEmpty)
+                    Button("카테고리 평가 비우기", role: .destructive) { session.clear() }
+                        .disabled(isWorking || session.results.isEmpty)
+                }
+            }
+            .navigationTitle("보이는 옷 종류 평가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("완료") { dismiss() } }
+            .task(id: photo) {
+                photoData = nil
+                visibleCategories.removeAll()
+                annotationConfirmed = false
+                result = nil
+                message = nil
+                guard let photo else { return }
+                do {
+                    let data = try await photo.loadTransferable(type: Data.self)
+                    try Task.checkCancellation()
+                    photoData = data
+                    if data == nil { message = "사진을 읽지 못했어요." }
+                } catch is CancellationError {
+                } catch { message = "사진을 읽지 못했어요. 다시 선택해 주세요." }
+            }
+            .onDisappear { evaluationTask?.cancel() }
+        }
+    }
+
+    private func metrics(_ title: String, _ value: CategoryVisibilityMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(title) · 적중 \(value.truePositive) · 오추천 \(value.falsePositive) · 누락 \(value.falseNegative)")
+            Text("정밀도 \(rate(value.precision)) · 재현율 \(rate(value.recall)) · F1 \(rate(value.f1))")
+                .font(.caption)
+        }
+    }
+
+    private func rate(_ value: Double?) -> String {
+        value.map { $0.formatted(.percent.precision(.fractionLength(1))) } ?? "측정 없음"
+    }
+
+    private func categoryNames(_ categories: [GarmentCategory]) -> String {
+        categories.isEmpty ? "없음" : categories.map(\.rawValue).joined(separator: ", ")
+    }
+
+    private func evaluate() {
+        guard !isWorking, annotationConfirmed, let photoData, !garments.isEmpty else { return }
+        let truth = visibleCategories
+        let wardrobe = garments.map { GarmentSnapshot(id: $0.id, category: $0.category, name: $0.name,
+            imageData: $0.imageData, cutoutImageData: $0.cutoutImageData) }
+        isWorking = true
+        message = nil
+        evaluationTask = Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                let started = ContinuousClock.now
+                let groups = try await DeviceOutfitAnalyzer().analyze(photoData: photoData, wardrobe: wardrobe)
+                try Task.checkCancellation()
+                let duration = started.duration(to: .now).components
+                let elapsed = Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15
+                let measured = try CategoryVisibilityEvaluation.evaluate(
+                    visibleCategories: truth, groups: groups, elapsedMilliseconds: elapsed)
+                result = measured
+                session.append(measured, photoKey: FeaturePrintCache<Int>.imageKey(photoData))
+            } catch is CancellationError {
+            } catch { message = "평가를 완료하지 못했어요. 사진과 옷장을 확인해 주세요." }
+        }
     }
 }
 

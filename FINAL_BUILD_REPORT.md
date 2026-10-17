@@ -1,5 +1,26 @@
 # WEARy 프로토타입 최신 빌드·서버 검증 보고서
 
+## 2026-10-18 카테고리 가시성 평가 확장
+
+- 환경: Xcode 27.1, iPhone 17 Pro 시뮬레이터, iOS 26.5, Debug·코드서명 비활성.
+- 착장 핵심 단위 테스트 66개 통과, 실패·스킵 0개. 새 카테고리 지표 규칙 7개를 포함한다.
+- 첫 묶음 실행은 단위 66개 통과·새 UI 1개 실패였다. UI 실패는 List 아래의 평가 버튼을 스크롤 없이 조회한 테스트 탐색 문제였으며 테스트에 스크롤을 추가했다.
+- 수정 후 대상 UI 테스트 1개 통과, 실패·스킵 0개. MY 진입·평가 화면 진입·사진과 정답을 지정하기 전 실행 비활성·빈 모음 공유 비활성을 확인했다. 실제 사진 선택·분석·공유 시트 조작 전체를 UI 자동화한 것은 아니다.
+- 단위 및 최초 UI 결과: `/tmp/weary-category-evaluation-20261018.xcresult`.
+- 수정 후 대상 UI 결과: `/tmp/weary-category-ui-20261018.xcresult`.
+- 추천 목록과 자동 선택의 카테고리 TP·FP·FN, 정밀도·재현율·F1, 분모 0, 중복·50장 한도·JSON 왕복·개인 사진 키 제외를 검증했다.
+- 실제 사진 데이터셋의 인식 품질, Jev API, 실기기·실서버 통합, 실시간 영상 합성은 이번 검증 범위에 포함하지 않았다. 테스트용 가짜 데이터의 개선 결과를 실제 정확도 성과로 사용하지 않는다.
+
+재현 명령(사용 가능한 시뮬레이터 ID 지정):
+
+```bash
+xcodebuild -quiet -project WEARy.xcodeproj -scheme WEARy \
+  -configuration Debug -destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' \
+  CODE_SIGNING_ALLOWED=NO -derivedDataPath /tmp/weary-visibility-derived \
+  -only-testing:WEARyTests/OutfitFlowTests \
+  -only-testing:WEARyUITests/WEARyUITests/testMyProvidesCategoryVisibilityEvaluation test
+```
+
 ## 빌드 결과
 
 | 항목 | 결과 |
