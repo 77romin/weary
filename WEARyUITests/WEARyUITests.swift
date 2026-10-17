@@ -129,6 +129,21 @@ final class WEARyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["evaluation.share"].isEnabled)
     }
 
+    func testMyProvidesCategoryVisibilityEvaluation() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["MY"].tap()
+        for _ in 0..<10 where !app.buttons["profile.visibilityEvaluation"].isHittable { app.swipeUp() }
+        app.buttons["profile.visibilityEvaluation"].tap()
+        XCTAssertTrue(app.navigationBars["보이는 옷 종류 평가"].waitForExistence(timeout: 3))
+        for _ in 0..<5 where !app.buttons["visibility.evaluate"].exists { app.swipeUp() }
+        XCTAssertTrue(app.buttons["visibility.evaluate"].exists)
+        XCTAssertFalse(app.buttons["visibility.evaluate"].isEnabled)
+        for _ in 0..<6 where !app.buttons["visibility.share"].isHittable { app.swipeUp() }
+        XCTAssertTrue(app.buttons["visibility.share"].exists)
+        XCTAssertFalse(app.buttons["visibility.share"].isEnabled)
+    }
+
     func testCommunityAndMarketTabsHaveSeedContent() throws {
         continueAfterFailure = false
         let app = launchApp()

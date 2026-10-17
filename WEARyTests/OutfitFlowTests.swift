@@ -7,6 +7,105 @@ import UIKit
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("카테고리 평가는 적중·오추천·누락과 비율을 계산한다")
+    func categoryMetricsCountErrors() {
+        let metrics = CategoryVisibilityMetrics.measure(truth: [.top, .bottom], predicted: [.top, .hat])
+        #expect(metrics.truePositive == 1 && metrics.falsePositive == 1)
+        #expect(metrics.falseNegative == 1 && metrics.trueNegative == GarmentCategory.allCases.count - 3)
+        #expect(metrics.precision == 0.5 && metrics.recall == 0.5 && metrics.f1 == 0.5)
+    }
+
+    @Test("옷 없는 정답과 빈 예측의 분모 0을 성공률 100%로 표시하지 않는다")
+    func categoryMetricsHandleNegativePhotos() {
+        let empty = CategoryVisibilityMetrics.measure(truth: [], predicted: [])
+        #expect(empty.precision == nil && empty.recall == nil && empty.f1 == nil)
+        let falseAlarm = CategoryVisibilityMetrics.measure(truth: [], predicted: [.hat])
+        #expect(falseAlarm.falsePositive == 1 && falseAlarm.precision == 0)
+        #expect(falseAlarm.recall == nil && falseAlarm.f1 == 0)
+        let missed = CategoryVisibilityMetrics.measure(truth: [.top], predicted: [])
+        #expect(missed.falseNegative == 1 && missed.precision == nil && missed.recall == 0)
+    }
+
+    @Test("집계 비율은 사진별 백분율 평균이 아닌 카테고리 건수 합계다")
+    func categoryMetricsAggregateCounts() {
+        let result = CategoryVisibilityMetrics.aggregate([
+            .measure(truth: [.top], predicted: [.top]),
+            .measure(truth: [.hat, .bottom, .shoes], predicted: [.bag])
+        ])
+        #expect(result.truePositive == 1 && result.falsePositive == 1 && result.falseNegative == 3)
+        #expect(result.precision == 0.5 && result.recall == 0.25)
+    }
+
+    @Test("가시성 전후 평가에서 목록 오추천과 자동 선택 누락을 따로 측정한다")
+    func categoryEvaluationMeasuresVerificationTradeoff() throws {
+        let groups = [GarmentCategory.top, .hat, .bottom].map { category in
+            let id = UUID()
+            return DetectedGarmentGroup(category: category, candidateIDs: [id, id],
+                selectedGarmentID: id, confidence: .high, source: .vision)
+        }
+        let before = try CategoryVisibilityEvaluation.evaluate(
+            visibleCategories: [.top, .bottom], groups: groups, elapsedMilliseconds: 5)
+        let verified = try GarmentVisibilityFilter.apply([
+            .init(category: .top, visibility: .present),
+            .init(category: .hat, visibility: .absent),
+            .init(category: .bottom, visibility: .uncertain)
+        ], to: groups)
+        let after = try CategoryVisibilityEvaluation.evaluate(
+            visibleCategories: [.top, .bottom], groups: verified, elapsedMilliseconds: 10)
+        #expect(before.suggestions.falsePositive == 1)
+        #expect(after.suggestions.falsePositive == 0 && after.suggestions.falseNegative == 0)
+        #expect(after.selections.falsePositive == 0 && after.selections.falseNegative == 1)
+        #expect(after.visibleCategories == [.top, .bottom])
+    }
+
+    @Test("자동 선택 ID가 후보에 없으면 선택 실적으로 인정하지 않는다")
+    func categoryEvaluationRejectsInvalidSelectionCredit() throws {
+        let group = DetectedGarmentGroup(category: .top, candidateIDs: [UUID()],
+            selectedGarmentID: UUID(), confidence: .high, source: .vision)
+        let result = try CategoryVisibilityEvaluation.evaluate(
+            visibleCategories: [.top], groups: [group, group], elapsedMilliseconds: 1)
+        #expect(result.suggestions.truePositive == 1)
+        #expect(result.selections.truePositive == 0 && result.selections.falseNegative == 1)
+    }
+
+    @Test("데모 결과와 잘못된 시간은 카테고리 실측에서 제외한다")
+    func categoryEvaluationValidatesInputs() {
+        let group = DetectedGarmentGroup(category: .top, candidateIDs: [UUID()],
+            selectedGarmentID: nil, confidence: .none, source: .ai)
+        #expect(throws: CategoryVisibilityEvaluationError.self) {
+            try CategoryVisibilityEvaluation.evaluate(visibleCategories: [], groups: [group], elapsedMilliseconds: 1)
+        }
+        for duration in [Double.nan, Double.infinity, -1] {
+            #expect(throws: CategoryVisibilityEvaluationError.self) {
+                try CategoryVisibilityEvaluation.evaluate(visibleCategories: [], groups: [], elapsedMilliseconds: duration)
+            }
+        }
+    }
+
+    @Test("카테고리 평가 모음은 빈 예측을 포함하고 50장·중복·JSON 경계를 지킨다")
+    @MainActor
+    func categoryEvaluationSessionExportsOnlyMetrics() throws {
+        let session = CategoryVisibilityEvaluationSession()
+        for index in 0..<55 {
+            let result = try CategoryVisibilityEvaluation.evaluate(
+                visibleCategories: [.top], groups: [], elapsedMilliseconds: 1)
+            session.append(result, photoKey: "private-hash-\(index)")
+        }
+        #expect(session.results.count == 50 && session.suggestions.falseNegative == 50)
+        let updated = try CategoryVisibilityEvaluation.evaluate(
+            visibleCategories: [], groups: [], elapsedMilliseconds: 1)
+        session.append(updated, photoKey: "private-hash-54")
+        session.append(updated, photoKey: "private-hash-54")
+        #expect(session.results.count == 50 && session.suggestions.falseNegative == 49)
+        let json = session.exportJSON
+        #expect(!json.contains("private-hash") && !json.contains("photoData") && !json.contains("garmentID"))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        #expect(try decoder.decode([CategoryVisibilityEvaluationResult].self, from: Data(json.utf8)).count == 50)
+        session.clear()
+        #expect(session.results.isEmpty && session.suggestions.precision == nil)
+    }
+
     @Test("보이지 않는 카테고리를 제거하고 불확실·누락 후보는 자동 선택하지 않는다")
     func filtersGarmentVisibility() throws {
         let groups = [GarmentCategory.hat, .top, .bottom, .shoes].map { category in
