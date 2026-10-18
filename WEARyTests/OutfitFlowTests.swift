@@ -144,6 +144,32 @@ struct OutfitFlowTests {
         #expect(model.photo == nil && model.errorMessage != nil && !model.isLoading)
     }
 
+    @Test("원본 비교는 보정을 보존하고 사진 변경·삭제에서 비교 상태를 초기화한다")
+    @MainActor
+    func fittingComparisonPreservesPlacementAndResetsWithPhoto() async throws {
+        let data = try #require(solidImageData(red: 0.2, green: 0.3, blue: 0.4))
+        let model = FittingPhotoModel()
+        model.toggleComparison()
+        #expect(!model.showsOriginal)
+        let analyze: @Sendable (Data) throws -> FittingPhotoResult = { data in
+            .init(data: data, size: CGSize(width: 100, height: 100),
+                  rect: CGRect(x: 0.2, y: 0.1, width: 0.6, height: 0.5), outcome: .placed)
+        }
+        await model.load(analyze: analyze) { data }
+        model.placement.update(x: 0.7, y: 0.6, scale: 0.8)
+        let adjusted = model.placement
+        model.toggleComparison()
+        #expect(model.showsOriginal && model.placement == adjusted)
+        model.toggleComparison()
+        #expect(!model.showsOriginal && model.placement == adjusted)
+        model.toggleComparison()
+        await model.load(analyze: analyze) { data }
+        #expect(!model.showsOriginal && model.placement.scale == 0.6)
+        model.toggleComparison()
+        model.clear()
+        #expect(!model.showsOriginal && model.photo == nil)
+    }
+
     @Test("피팅 제스처는 배율과 사진 기준 이동량을 누적하고 비정상 값을 거부한다")
     func fittingGesturesApplyIncrementalPhotoRelativeDeltas() {
         var placement = FittingOverlayPlacement()

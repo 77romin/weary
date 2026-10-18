@@ -62,6 +62,15 @@ final class WEARyUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 25, dy: 15)))
         XCTAssertGreaterThan(overlay.frame.midX, beforeDrag.midX + 10)
         XCTAssertEqual(overlay.frame.width, beforeDrag.width, accuracy: 3)
+        let adjustedScale = scale.value as? String
+        app.buttons["fitting.compare"].tap()
+        XCTAssertTrue(app.staticTexts["샘플 원본 · 비교 중"].exists)
+        XCTAssertFalse(overlay.exists)
+        XCTAssertFalse(scale.isEnabled)
+        app.buttons["fitting.compare"].tap()
+        XCTAssertTrue(overlay.exists)
+        XCTAssertTrue(scale.isEnabled)
+        XCTAssertEqual(scale.value as? String, adjustedScale)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "photo-fitting-sample-not-live"
         attachment.lifetime = .keepAlways
@@ -80,6 +89,7 @@ final class WEARyUITests: XCTestCase {
         for _ in 0..<5 where !app.buttons["fitting.clear"].isHittable { scrollFittingMargin(app, up: false) }
         app.buttons["fitting.clear"].tap()
         XCTAssertFalse(app.images["fitting.overlay"].exists)
+        XCTAssertFalse(app.buttons["fitting.compare"].isEnabled)
         app.buttons["fitting.close"].tap()
         XCTAssertTrue(entry.waitForExistence(timeout: 3))
         entry.tap()

@@ -40,6 +40,7 @@ final class FittingPhotoModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published var placement = FittingOverlayPlacement()
     @Published var showsOverlay = false
+    @Published private(set) var showsOriginal = false
     private var initialPlacement = FittingOverlayPlacement()
     private var gate = FittingPhotoRequestGate()
 
@@ -80,11 +81,15 @@ final class FittingPhotoModel: ObservableObject {
     }
 
     func resetPlacement() { placement = initialPlacement }
+    func toggleComparison() {
+        guard photo != nil, showsOverlay, !isLoading else { return }
+        showsOriginal.toggle()
+    }
     func enableManual() { guard photo != nil else { return }; showsOverlay = true }
     func clear() { _ = gate.begin(); resetContent() }
     private func resetContent() {
         photo = nil; photoSize = .zero; outcome = nil; errorMessage = nil
-        isLoading = false; isSample = false; showsOverlay = false
+        isLoading = false; isSample = false; showsOverlay = false; showsOriginal = false
         placement.reset(); initialPlacement = placement
     }
 }
@@ -105,7 +110,15 @@ struct VirtualFittingView: View {
                     Text("사진을 선택하면 상반신 위치를 찾아 상의 이미지를 자동 배치해요. 자연스러운 옷 합성·Jev 연결은 아직 없으며 실제 사이즈나 핏을 판단할 수 없어요.")
                         .font(.caption)
                     preview
-                    Text(garmentName).font(.headline)
+                    HStack {
+                        Text(garmentName).font(.headline)
+                        Spacer()
+                        Button(model.showsOriginal ? "피팅 보기" : "원본 보기") { model.toggleComparison() }
+                            .buttonStyle(.bordered)
+                            .disabled(!model.showsOverlay || model.isLoading)
+                            .accessibilityIdentifier("fitting.compare")
+                            .accessibilityValue(model.showsOriginal ? "원본 사진" : "피팅 결과")
+                    }
                     Text(model.message).font(.caption).accessibilityIdentifier("fitting.status")
                     PhotosPicker(selection: $selectedPhoto, matching: .images) {
                         Label("내 사진 선택", systemImage: "photo").frame(maxWidth: .infinity)
@@ -132,11 +145,13 @@ struct VirtualFittingView: View {
                     }
                     if model.photo != nil && model.showsOverlay {
                         Text("한 손가락으로 옷을 옮기고, 두 손가락으로 오므리거나 펼쳐 크기를 조절하세요. 아래 조절기로 세밀하게 보정할 수도 있어요.").font(.caption)
-                        adjustment("크기", value: Binding(get: { model.placement.scale }, set: { model.placement.update(scale: $0) }), range: 0.2...1, id: "fitting.scale")
-                        adjustment("가로 위치", value: Binding(get: { model.placement.x }, set: { model.placement.update(x: $0) }), range: 0...1, id: "fitting.x")
-                        adjustment("세로 위치", value: Binding(get: { model.placement.y }, set: { model.placement.update(y: $0) }), range: 0...1, id: "fitting.y")
-                        Button("위치·크기 초기화") { model.resetPlacement() }
-                            .accessibilityIdentifier("fitting.reset")
+                        Group {
+                            adjustment("크기", value: Binding(get: { model.placement.scale }, set: { model.placement.update(scale: $0) }), range: 0.2...1, id: "fitting.scale")
+                            adjustment("가로 위치", value: Binding(get: { model.placement.x }, set: { model.placement.update(x: $0) }), range: 0...1, id: "fitting.x")
+                            adjustment("세로 위치", value: Binding(get: { model.placement.y }, set: { model.placement.update(y: $0) }), range: 0...1, id: "fitting.y")
+                            Button("위치·크기 초기화") { model.resetPlacement() }
+                                .accessibilityIdentifier("fitting.reset")
+                        }.disabled(model.showsOriginal)
                     }
                     Text("사진은 이 화면의 메모리에서만 처리하며 저장·서버 전송·착용 횟수 반영을 하지 않아요. 선택한 사진의 방향을 유지하며 추가 좌우 반전을 하지 않아요. 배경이 제거되지 않은 옷은 배경도 함께 표시돼요.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -164,7 +179,7 @@ struct VirtualFittingView: View {
                     Image(uiImage: photo).resizable().scaledToFit()
                         .frame(width: frame.width, height: frame.height)
                         .position(x: frame.midX, y: frame.midY)
-                    if model.showsOverlay {
+                    if model.showsOverlay && !model.showsOriginal {
                         let width = frame.width * model.placement.scale
                         Image(uiImage: image).resizable().scaledToFit()
                             .frame(width: width, height: width * image.size.height / max(image.size.width, 1))
@@ -185,7 +200,7 @@ struct VirtualFittingView: View {
                 }
                 if model.isLoading { ProgressView().tint(.white).accessibilityIdentifier("fitting.loading") }
                 VStack {
-                    Text(model.isSample ? "샘플 사진 · 합성 아님" : "사진 기반 · 합성 아님")
+                    Text(model.showsOriginal ? (model.isSample ? "샘플 원본 · 비교 중" : "원본 사진 · 비교 중") : (model.isSample ? "샘플 사진 · 합성 아님" : "사진 기반 · 합성 아님"))
                         .font(.caption.weight(.bold)).padding(8)
                         .background(.black.opacity(0.7), in: Capsule()).foregroundStyle(.white)
                     Spacer()
