@@ -9,6 +9,12 @@ final class WEARyUITests: XCTestCase {
         return app
     }
 
+    private func scrollFittingMargin(_ app: XCUIApplication, up: Bool) {
+        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.35))
+        let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.8))
+        (up ? bottom : top).press(forDuration: 0.05, thenDragTo: up ? top : bottom)
+    }
+
     func testVirtualFittingManualPreviewAndReset() throws {
         continueAfterFailure = false
         let app = launchApp()
@@ -27,26 +33,35 @@ final class WEARyUITests: XCTestCase {
         entry.tap()
         XCTAssertTrue(app.navigationBars["가상 피팅 · 실험"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["fitting.stage"].exists)
+        XCTAssertTrue(app.switches["fitting.tracking"].exists)
+        XCTAssertFalse(app.switches["fitting.tracking"].isEnabled)
+        XCTAssertTrue(app.buttons["fitting.switchCamera"].exists)
+        XCTAssertFalse(app.buttons["fitting.switchCamera"].isEnabled)
         app.buttons["fitting.sample"].tap()
         XCTAssertTrue(app.staticTexts["샘플 배경 · 라이브 카메라가 아닙니다"].exists)
         XCTAssertTrue(app.images["fitting.overlay"].exists)
+        XCTAssertFalse(app.switches["fitting.tracking"].isEnabled)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "manual-fitting-sample-not-live"
         attachment.lifetime = .keepAlways
         add(attachment)
 
         let scale = app.sliders["fitting.scale"]
-        for _ in 0..<4 where !scale.isHittable { app.swipeUp() }
+        for _ in 0..<6 {
+            if scale.isHittable && scale.frame.maxY < app.frame.maxY - 100 { break }
+            scrollFittingMargin(app, up: true)
+        }
+        XCTAssertLessThan(scale.frame.maxY, app.frame.maxY - 100)
         let initialScale = scale.value as? String
         scale.adjust(toNormalizedSliderPosition: 0.95)
         XCTAssertNotEqual(scale.value as? String, initialScale)
-        for _ in 0..<4 where !app.buttons["fitting.reset"].isHittable { app.swipeUp() }
+        for _ in 0..<4 where !app.buttons["fitting.reset"].isHittable { scrollFittingMargin(app, up: true) }
         app.buttons["fitting.reset"].tap()
         XCTAssertEqual(scale.value as? String, initialScale)
-        for _ in 0..<5 where !app.buttons["fitting.start"].isHittable { app.swipeDown() }
+        for _ in 0..<5 where !app.buttons["fitting.start"].isHittable { scrollFittingMargin(app, up: false) }
 #if targetEnvironment(simulator)
         app.buttons["fitting.start"].tap()
-        XCTAssertTrue(app.staticTexts["이 환경에서는 전면 카메라를 사용할 수 없어요. 샘플로 체험해 보세요."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["이 환경에서는 선택한 카메라를 사용할 수 없어요. 샘플로 체험해 보세요."].waitForExistence(timeout: 3))
         app.buttons["fitting.stop"].tap()
 #endif
         app.buttons["fitting.close"].tap()
@@ -68,7 +83,7 @@ final class WEARyUITests: XCTestCase {
         let entry = app.buttons["garment.tryOn"]
         XCTAssertTrue(entry.waitForExistence(timeout: 3))
         XCTAssertFalse(entry.isEnabled)
-        XCTAssertTrue(app.staticTexts["1단계는 사진이 있는 상의만 지원해요."].exists)
+        XCTAssertTrue(app.staticTexts["현재는 사진이 있는 상의만 지원해요."].exists)
     }
 
     func testSignedOutLaunchShowsAuthenticationOptions() throws {

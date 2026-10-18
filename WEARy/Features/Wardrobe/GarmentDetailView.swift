@@ -100,8 +100,8 @@ struct GarmentDetailView: View {
             .disabled(garment.category != .top || fittingImage == nil)
             .accessibilityIdentifier("garment.tryOn")
             Text(garment.category == .top && fittingImage != nil
-                 ? "1단계: 카메라 위에 옷 사진을 수동으로 겹쳐봐요. 자연스러운 합성은 아직 아니에요."
-                 : "1단계는 사진이 있는 상의만 지원해요.")
+                 ? "카메라 위에 옷 사진을 겹치고 몸 위치를 따라가요. 자연스러운 합성은 아직 아니에요."
+                 : "현재는 사진이 있는 상의만 지원해요.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
