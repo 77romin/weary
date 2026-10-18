@@ -289,7 +289,7 @@ private struct DayOutfitDetailView: View {
                         .foregroundStyle(WEARyTheme.secondaryInk)
                 }
                 Spacer()
-                if outfit.isPublished {
+                if MVPFeatures.socialEnabled && outfit.isPublished {
                     Label("공개", systemImage: "person.2.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(WEARyTheme.coral)
@@ -503,7 +503,7 @@ private struct OutfitEditorView: View {
                     }
                 }
 
-                if outfit.isPublished {
+                if MVPFeatures.socialEnabled && outfit.isPublished {
                     Section {
                         Label("현재 로컬 피드에 공개된 착장이에요.", systemImage: "person.2.fill")
                             .foregroundStyle(WEARyTheme.coral)

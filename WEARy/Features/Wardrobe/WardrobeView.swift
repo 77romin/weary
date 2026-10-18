@@ -41,6 +41,7 @@ struct WardrobeView: View {
                                         GarmentCard(garment: garment)
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityIdentifier("wardrobe.garment.\(garment.name)")
                                 }
                             }
                         }

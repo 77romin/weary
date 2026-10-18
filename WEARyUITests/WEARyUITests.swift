@@ -9,6 +9,132 @@ final class WEARyUITests: XCTestCase {
         return app
     }
 
+    private func scrollFittingMargin(_ app: XCUIApplication, up: Bool) {
+        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.35))
+        let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.8))
+        (up ? bottom : top).press(forDuration: 0.05, thenDragTo: up ? top : bottom)
+    }
+
+    func testMVPShowsOnlyWardrobeCaptureAndMy() throws {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.buttons["옷장"].isSelected)
+        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        XCTAssertTrue(app.tabBars.buttons["기록"].exists)
+        XCTAssertTrue(app.tabBars.buttons["MY"].exists)
+        XCTAssertFalse(app.tabBars.buttons["피드"].exists)
+        XCTAssertFalse(app.tabBars.buttons["마켓"].exists)
+        app.tabBars.buttons["MY"].tap()
+        XCTAssertFalse(app.buttons["profile.contentMode"].exists)
+        XCTAssertFalse(app.buttons["profile.blockedUsers"].exists)
+        XCTAssertFalse(app.buttons["profile.notices"].exists)
+        app.tabBars.buttons["옷장"].tap()
+        let search = app.searchFields.firstMatch
+        if !search.isHittable { app.swipeDown() }
+        search.tap()
+        search.typeText("화이트 베이비 티")
+        app.buttons["wardrobe.garment.화이트 베이비 티"].tap()
+        XCTAssertFalse(app.buttons["이 옷 판매하기"].exists)
+    }
+
+    func testVirtualFittingManualPreviewAndReset() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["옷장"].tap()
+        let search = app.searchFields.firstMatch
+        if !search.isHittable { app.swipeDown() }
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        search.tap()
+        search.typeText("화이트 베이비 티")
+        let garment = app.buttons["wardrobe.garment.화이트 베이비 티"]
+        XCTAssertTrue(garment.waitForExistence(timeout: 3))
+        garment.tap()
+        app.buttons["AI 실험 · MVP 제외"].tap()
+        let entry = app.buttons["garment.tryOn"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        XCTAssertTrue(entry.isEnabled)
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["가상 피팅 · 실험"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["fitting.stage"].exists)
+        XCTAssertTrue(app.buttons["fitting.selectPhoto"].exists)
+        XCTAssertFalse(app.buttons["fitting.start"].exists)
+        XCTAssertFalse(app.buttons["fitting.switchCamera"].exists)
+        app.buttons["fitting.sample"].tap()
+        XCTAssertTrue(app.staticTexts["샘플 사진 · 합성 아님"].waitForExistence(timeout: 3))
+        let finished = NSPredicate { _, _ in
+            app.images["fitting.overlay"].exists || app.buttons["fitting.manual"].exists
+        }
+        expectation(for: finished, evaluatedWith: nil)
+        waitForExpectations(timeout: 15)
+        // Simulator pose runtime may be unavailable; explicit manual recovery is
+        // not evidence of automatic fitting success (covered separately in unit tests).
+        if app.buttons["fitting.manual"].exists { app.buttons["fitting.manual"].tap() }
+        XCTAssertTrue(app.images["fitting.overlay"].exists)
+        let scale = app.sliders["fitting.scale"]
+        let initialScale = scale.value as? String
+        let overlay = app.images["fitting.overlay"]
+        let originalFrame = overlay.frame
+        overlay.pinch(withScale: 1.25, velocity: 1)
+        XCTAssertGreaterThan(overlay.frame.width, originalFrame.width + 5)
+        XCTAssertEqual(overlay.frame.midX, originalFrame.midX, accuracy: 4)
+        let enlargedWidth = overlay.frame.width
+        overlay.pinch(withScale: 0.8, velocity: -1)
+        XCTAssertLessThan(overlay.frame.width, enlargedWidth - 5)
+        let beforeDrag = overlay.frame
+        let start = overlay.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 25, dy: 15)))
+        XCTAssertGreaterThan(overlay.frame.midX, beforeDrag.midX + 10)
+        XCTAssertEqual(overlay.frame.width, beforeDrag.width, accuracy: 3)
+        let adjustedScale = scale.value as? String
+        app.buttons["fitting.compare"].tap()
+        XCTAssertTrue(app.staticTexts["샘플 원본 · 비교 중"].exists)
+        XCTAssertFalse(overlay.exists)
+        XCTAssertFalse(scale.isEnabled)
+        app.buttons["fitting.compare"].tap()
+        XCTAssertTrue(overlay.exists)
+        XCTAssertTrue(scale.isEnabled)
+        XCTAssertEqual(scale.value as? String, adjustedScale)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "photo-fitting-sample-not-live"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        for _ in 0..<6 {
+            if scale.isHittable && scale.frame.maxY < app.frame.maxY - 100 { break }
+            scrollFittingMargin(app, up: true)
+        }
+        XCTAssertLessThan(scale.frame.maxY, app.frame.maxY - 100)
+        scale.adjust(toNormalizedSliderPosition: 0.95)
+        XCTAssertNotEqual(scale.value as? String, initialScale)
+        for _ in 0..<4 where !app.buttons["fitting.reset"].isHittable { scrollFittingMargin(app, up: true) }
+        app.buttons["fitting.reset"].tap()
+        XCTAssertEqual(scale.value as? String, initialScale)
+        for _ in 0..<5 where !app.buttons["fitting.clear"].isHittable { scrollFittingMargin(app, up: false) }
+        app.buttons["fitting.clear"].tap()
+        XCTAssertFalse(app.images["fitting.overlay"].exists)
+        XCTAssertFalse(app.buttons["fitting.compare"].isEnabled)
+        app.buttons["fitting.close"].tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        entry.tap()
+        XCTAssertTrue(app.staticTexts["한 명의 양쪽 어깨가 보이는 사진을 선택해 주세요. 상반신만 나와도 괜찮아요."].waitForExistence(timeout: 3))
+        app.buttons["fitting.close"].tap()
+    }
+
+    func testVirtualFittingIsDisabledForNonTopGarment() throws {
+        let app = launchApp()
+        app.tabBars.buttons["옷장"].tap()
+        let search = app.searchFields.firstMatch
+        if !search.isHittable { app.swipeDown() }
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        search.tap()
+        search.typeText("커브드 데님")
+        app.buttons["wardrobe.garment.커브드 데님"].tap()
+        app.buttons["AI 실험 · MVP 제외"].tap()
+        let entry = app.buttons["garment.tryOn"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        XCTAssertFalse(entry.isEnabled)
+        XCTAssertTrue(app.staticTexts["현재는 사진이 있는 상의만 지원해요."].exists)
+    }
+
     func testSignedOutLaunchShowsAuthenticationOptions() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

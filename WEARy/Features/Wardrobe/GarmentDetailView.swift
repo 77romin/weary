@@ -8,6 +8,7 @@ struct GarmentDetailView: View {
     @State private var showingDeleteConfirmation = false
     @State private var showingEditor = false
     @State private var showingListingEditor = false
+    @State private var showingVirtualFitting = false
 
     var body: some View {
         ScrollView {
@@ -24,11 +25,14 @@ struct GarmentDetailView: View {
 
                 VStack(alignment: .leading, spacing: 24) {
                     identitySection
+                    DisclosureGroup("AI 실험 · MVP 제외") {
+                        virtualFittingEntry.padding(.top, 8)
+                    }
                     metricsSection
                     informationSection
                     historySection
                     statusSection
-                    sellButton
+                    if MVPFeatures.socialEnabled { sellButton }
                     deleteButton
                 }
                 .padding(20)
@@ -48,6 +52,11 @@ struct GarmentDetailView: View {
         }
         .sheet(isPresented: $showingListingEditor) {
             NavigationStack { CreateListingView(garment: garment) }
+        }
+        .sheet(isPresented: $showingVirtualFitting) {
+            if let fittingImage {
+                VirtualFittingView(garmentName: garment.name, image: fittingImage)
+            }
         }
         .confirmationDialog(
             "이 옷을 삭제할까요?",
@@ -75,6 +84,27 @@ struct GarmentDetailView: View {
             Text("\(garment.colorName) · \(garment.season)")
                 .font(.subheadline)
                 .foregroundStyle(WEARyTheme.secondaryInk)
+        }
+    }
+
+    private var fittingImage: UIImage? {
+        (garment.cutoutImageData ?? garment.imageData).flatMap { UIImage(data: $0) }
+    }
+
+    private var virtualFittingEntry: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { showingVirtualFitting = true } label: {
+                Label("가상 피팅 · 실험", systemImage: "person.crop.rectangle")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(WEARyTheme.ink)
+            .disabled(garment.category != .top || fittingImage == nil)
+            .accessibilityIdentifier("garment.tryOn")
+            Text(garment.category == .top && fittingImage != nil
+                 ? "개발 보류 중인 사진 배치 실험이에요. 자연스러운 합성은 지원하지 않아요."
+                 : "현재는 사진이 있는 상의만 지원해요.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

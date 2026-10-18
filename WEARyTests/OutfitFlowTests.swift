@@ -5,10 +5,216 @@ import Testing
 import UIKit
 import Vision
 import CoreML
+import ImageIO
 @testable import WEARy
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    @Test("상의는 허리가 잘린 사진에서도 양쪽 어깨로 배치한다")
+    func fittingUpperBodyWithoutHips() throws {
+        let missing = FittingJoint(x: 0, y: 0, confidence: 0)
+        let left = FittingJoint(x: 0.25, y: 0.2, confidence: 0.9)
+        let right = FittingJoint(x: 0.75, y: 0.2, confidence: 0.9)
+        for size in [CGSize(width: 720, height: 1280), CGSize(width: 1280, height: 720)] {
+            let rect = try #require(FittingBodyGeometry.rect(leftShoulder: left, rightShoulder: right,
+                leftHip: missing, rightHip: missing, imageSize: size))
+            #expect(abs(rect.midX - 0.5) < 0.0001)
+            #expect(abs(rect.height * size.height - 0.5 * size.width * 1.9) < 0.0001)
+        }
+        #expect(FittingBodyGeometry.rect(leftShoulder: missing, rightShoulder: right,
+            leftHip: missing, rightHip: missing, imageSize: CGSize(width: 720, height: 1280)) == nil)
+        let hip = FittingJoint(x: 0.4, y: 0.7, confidence: 0.9)
+        let other = FittingJoint(x: 0.6, y: 0.7, confidence: 0.9)
+        #expect(FittingBodyGeometry.rect(leftShoulder: left, rightShoulder: right,
+            leftHip: hip, rightHip: other, imageSize: CGSize(width: 720, height: 1280)) != nil)
+        let invalid = FittingJoint(x: .nan, y: 0.2, confidence: 1)
+        #expect(FittingBodyGeometry.rect(leftShoulder: invalid, rightShoulder: right,
+            leftHip: hip, rightHip: other, imageSize: .zero) == nil)
+    }
+
+    @Test("사진 좌표는 잘림 없는 aspectFit 영역에 투영한다")
+    func fittingPhotoFrameUsesAspectFit() {
+        let viewport = CGSize(width: 300, height: 300)
+        #expect(FittingBodyGeometry.photoFrame(imageSize: CGSize(width: 100, height: 200), viewport: viewport)
+            == CGRect(x: 75, y: 0, width: 150, height: 300))
+        #expect(FittingBodyGeometry.photoFrame(imageSize: CGSize(width: 200, height: 100), viewport: viewport)
+            == CGRect(x: 0, y: 75, width: 300, height: 150))
+        #expect(FittingBodyGeometry.photoFrame(imageSize: .zero, viewport: viewport) == nil)
+        #expect(FittingBodyGeometry.photoFrame(imageSize: CGSize(width: CGFloat.infinity, height: 100), viewport: viewport) == nil)
+        let automatic = FittingOverlayPlacement.automatic(rect: CGRect(x: 0.2, y: 0.1, width: 0.6, height: 0.5))
+        #expect(abs(automatic.x - 0.5) < 0.0001)
+        #expect(abs(automatic.y - 0.35) < 0.0001)
+        #expect(automatic.scale == 0.6)
+    }
+
+    @Test("사진 교체와 삭제는 이전 분석 응답을 무효화한다")
+    func fittingPhotoRequestRejectsOldResults() {
+        var gate = FittingPhotoRequestGate()
+        let first = gate.begin()
+        #expect(gate.accepts(first))
+        let second = gate.begin()
+        #expect(!gate.accepts(first) && gate.accepts(second))
+        _ = gate.begin()
+        #expect(!gate.accepts(second))
+    }
+
+    @Test("손상된 사진은 분석 성공으로 처리하지 않는다")
+    func fittingPhotoRejectsInvalidImage() {
+        #expect(throws: FittingPhotoError.self) { try FittingPhotoProcessor.normalizedImage(Data([0, 1, 2])) }
+    }
+
+    @Test("사진의 EXIF 8방향은 한 번만 적용하고 표시와 분석 크기를 일치시킨다")
+    @MainActor
+    func fittingPhotoNormalizesAllOrientations() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let input = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 20), format: format).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+            UIColor.blue.setFill(); context.fill(CGRect(x: 20, y: 0, width: 20, height: 20))
+        }
+        let cgImage = try #require(input.cgImage)
+        let uiOrientations: [UIImage.Orientation] = [.up, .upMirrored, .down, .downMirrored,
+                                                     .leftMirrored, .right, .rightMirrored, .left]
+        func pixels(_ image: CGImage) -> [UInt8] {
+            var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            bytes.withUnsafeMutableBytes { raw in
+                let context = CGContext(data: raw.baseAddress, width: image.width, height: image.height,
+                    bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            }
+            return [3, image.height - 4].flatMap { y in
+                [3, image.width - 4].flatMap { x in Array(bytes[((y * image.width + x) * 4)..<((y * image.width + x) * 4 + 4)]) }
+            }
+        }
+        for orientation in 1...8 {
+            let data = NSMutableData()
+            let destination = try #require(CGImageDestinationCreateWithData(data, "public.tiff" as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, cgImage, [kCGImagePropertyOrientation: orientation] as CFDictionary)
+            #expect(CGImageDestinationFinalize(destination))
+            let output = try FittingPhotoProcessor.normalizedImage(data as Data)
+            #expect(output.width == (orientation >= 5 ? 20 : 40))
+            #expect(output.height == (orientation >= 5 ? 40 : 20))
+            let expected = UIGraphicsImageRenderer(size: CGSize(width: output.width, height: output.height), format: format).image { _ in
+                UIImage(cgImage: cgImage, scale: 1, orientation: uiOrientations[orientation - 1])
+                    .draw(in: CGRect(x: 0, y: 0, width: output.width, height: output.height))
+            }
+            #expect(pixels(output) == pixels(try #require(expected.cgImage)))
+            let png = try #require(UIImage(cgImage: output).pngData())
+            let repeated = try FittingPhotoProcessor.normalizedImage(png)
+            #expect(repeated.width == output.width && repeated.height == output.height)
+        }
+    }
+
+    @Test("사진 읽기 중 화면을 닫으면 늦은 분석 결과를 표시하지 않는다")
+    @MainActor
+    func fittingPhotoClearDuringLoad() async throws {
+        let data = try #require(solidImageData(red: 0.2, green: 0.3, blue: 0.4))
+        let model = FittingPhotoModel()
+        await model.load(analyze: { data in
+            .init(data: data, size: CGSize(width: 100, height: 100),
+                  rect: CGRect(x: 0.2, y: 0.1, width: 0.6, height: 0.5), outcome: .placed)
+        }) { model.clear(); return data }
+        #expect(model.photo == nil && !model.showsOverlay && !model.isLoading)
+    }
+
+    @Test("사진 분석 성공은 자동 배치하고 실패에서는 수동 배치를 명시적으로 선택한다")
+    @MainActor
+    func fittingPhotoModelSuccessAndFailure() async throws {
+        let data = try #require(solidImageData(red: 0.2, green: 0.3, blue: 0.4))
+        let model = FittingPhotoModel()
+        await model.load(analyze: { data in
+            .init(data: data, size: CGSize(width: 100, height: 100),
+                  rect: CGRect(x: 0.2, y: 0.1, width: 0.6, height: 0.5), outcome: .placed)
+        }) { data }
+        #expect(model.photo != nil && model.showsOverlay && !model.isLoading)
+        #expect(model.placement.scale == 0.6)
+        model.placement.update(scale: 0.9)
+        model.resetPlacement()
+        #expect(model.placement.scale == 0.6)
+        await model.load(analyze: { data in
+            .init(data: data, size: CGSize(width: 100, height: 100), rect: nil, outcome: .unavailable)
+        }) { data }
+        #expect(model.photo != nil && !model.showsOverlay && model.outcome == .unavailable)
+        model.enableManual()
+        #expect(model.showsOverlay)
+        model.clear()
+        #expect(model.photo == nil && !model.showsOverlay && model.outcome == nil)
+        await model.load { nil }
+        #expect(model.photo == nil && model.errorMessage != nil && !model.isLoading)
+    }
+
+    @Test("원본 비교는 보정을 보존하고 사진 변경·삭제에서 비교 상태를 초기화한다")
+    @MainActor
+    func fittingComparisonPreservesPlacementAndResetsWithPhoto() async throws {
+        let data = try #require(solidImageData(red: 0.2, green: 0.3, blue: 0.4))
+        let model = FittingPhotoModel()
+        model.toggleComparison()
+        #expect(!model.showsOriginal)
+        let analyze: @Sendable (Data) throws -> FittingPhotoResult = { data in
+            .init(data: data, size: CGSize(width: 100, height: 100),
+                  rect: CGRect(x: 0.2, y: 0.1, width: 0.6, height: 0.5), outcome: .placed)
+        }
+        await model.load(analyze: analyze) { data }
+        model.placement.update(x: 0.7, y: 0.6, scale: 0.8)
+        let adjusted = model.placement
+        model.toggleComparison()
+        #expect(model.showsOriginal && model.placement == adjusted)
+        model.toggleComparison()
+        #expect(!model.showsOriginal && model.placement == adjusted)
+        model.toggleComparison()
+        await model.load(analyze: analyze) { data }
+        #expect(!model.showsOriginal && model.placement.scale == 0.6)
+        model.toggleComparison()
+        model.clear()
+        #expect(!model.showsOriginal && model.photo == nil)
+    }
+
+    @Test("피팅 제스처는 배율과 사진 기준 이동량을 누적하고 비정상 값을 거부한다")
+    func fittingGesturesApplyIncrementalPhotoRelativeDeltas() {
+        var placement = FittingOverlayPlacement()
+        placement.resize(by: 1.2)
+        #expect(abs(placement.scale - 0.78) < 0.0001)
+        placement.resize(by: 0.5)
+        #expect(abs(placement.scale - 0.39) < 0.0001)
+        placement.move(by: CGSize(width: 30, height: -20), in: CGSize(width: 300, height: 200))
+        #expect(abs(placement.x - 0.6) < 0.0001)
+        #expect(abs(placement.y - 0.32) < 0.0001)
+        let before = placement
+        placement.resize(by: .nan)
+        placement.resize(by: -1)
+        placement.resize(by: 0)
+        placement.move(by: CGSize(width: 20, height: 20), in: .zero)
+        placement.move(by: CGSize(width: CGFloat.nan, height: CGFloat.infinity), in: CGSize(width: 300, height: 200))
+        #expect(placement == before)
+        placement.resize(by: 100)
+        #expect(placement.scale == 1)
+        placement.resize(by: 0.001)
+        #expect(placement.scale == 0.2)
+        placement.move(by: CGSize(width: -1000, height: 1000), in: CGSize(width: 300, height: 200))
+        #expect(placement.x == 0 && placement.y == 1)
+    }
+
+    @Test("수동 피팅 위치와 크기는 화면 기준 범위로 제한한다")
+    func fittingPlacementClampsToViewport() {
+        var placement = FittingOverlayPlacement()
+        placement.update(x: -2, y: 3, scale: 8)
+        #expect(placement.x == 0 && placement.y == 1 && placement.scale == 1)
+        placement.update(scale: -1)
+        #expect(placement.scale == 0.2)
+    }
+
+    @Test("수동 피팅은 유효하지 않은 수치를 무시하고 초기 위치로 복원한다")
+    func fittingPlacementRejectsNonFiniteAndResets() {
+        var placement = FittingOverlayPlacement()
+        let initial = placement
+        placement.update(x: .nan, y: .infinity, scale: -.infinity)
+        #expect(placement == initial)
+        placement.update(x: 0.1, y: 0.9, scale: 0.3)
+        placement.reset()
+        #expect(placement == initial)
+    }
+
     /// Capability probe, not an accuracy test. Failures are reported by stage so
     /// an unavailable simulator is never mistaken for a recognition miss.
     @Test("Vision 런타임의 기본·CPU 실행 가능 여부를 단계별 진단한다")

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A171F1000000000000000001 /* VirtualFittingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A171F1000000000000000002 /* VirtualFittingView.swift */; };
+		A171F1000000000000000003 /* FittingPhotoProcessing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A171F1000000000000000004 /* FittingPhotoProcessing.swift */; };
 		067C09C6F577FF2296A212CF /* WardrobeInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EABE584631562BA3546A6F4 /* WardrobeInsightsView.swift */; };
 		09D84950D7E78B7EC77CEE07 /* ContentSafetyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEC42A518CE80781B97F7F7F /* ContentSafetyRepository.swift */; };
 		0C3174C9E7BE83D6CAD2868B /* PublicPhotoConsentSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02C6E407DBA89D3CA6EAA95E /* PublicPhotoConsentSection.swift */; };
@@ -79,6 +81,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A171F1000000000000000002 /* VirtualFittingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualFittingView.swift; sourceTree = "<group>"; };
+		A171F1000000000000000004 /* FittingPhotoProcessing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FittingPhotoProcessing.swift; sourceTree = "<group>"; };
 		01F4B5A747A653FF2CD15627 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
 		02C6E407DBA89D3CA6EAA95E /* PublicPhotoConsentSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicPhotoConsentSection.swift; sourceTree = "<group>"; };
 		0BBA0D4D242C9ACFF3DD4A1C /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
@@ -246,6 +250,8 @@
 		58C98650871219A892E603EE /* Wardrobe */ = {
 			isa = PBXGroup;
 			children = (
+				A171F1000000000000000002 /* VirtualFittingView.swift */,
+				A171F1000000000000000004 /* FittingPhotoProcessing.swift */,
 				2C3C149F4F711AB873F2E153 /* GarmentDetailView.swift */,
 				9AE57F226B78F9845A928B97 /* GarmentEditorView.swift */,
 				39A1BD1D09B5751BB982B218 /* WardrobeView.swift */,
@@ -543,6 +549,8 @@
 				6C3EDF65005EB3E3434A6D40 /* GarmentArtwork.swift in Sources */,
 				DC1E9D0B4493AD02683909EB /* GarmentCutoutService.swift in Sources */,
 				1B80746C4352690D940C43A5 /* GarmentDetailView.swift in Sources */,
+				A171F1000000000000000001 /* VirtualFittingView.swift in Sources */,
+				A171F1000000000000000003 /* FittingPhotoProcessing.swift in Sources */,
 				FE65C978383ACCB7DB2E2D7D /* GarmentEditorView.swift in Sources */,
 				C4DB425FA0C1A7339A4EACBC /* MarketChatRepository.swift in Sources */,
 				5582C5B7CF0ADAA220D024E7 /* MarketChatViews.swift in Sources */,
