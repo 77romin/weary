@@ -33,16 +33,22 @@ final class WEARyUITests: XCTestCase {
         entry.tap()
         XCTAssertTrue(app.navigationBars["가상 피팅 · 실험"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["fitting.stage"].exists)
-        XCTAssertTrue(app.switches["fitting.tracking"].exists)
-        XCTAssertFalse(app.switches["fitting.tracking"].isEnabled)
-        XCTAssertTrue(app.buttons["fitting.switchCamera"].exists)
-        XCTAssertFalse(app.buttons["fitting.switchCamera"].isEnabled)
+        XCTAssertTrue(app.buttons["fitting.selectPhoto"].exists)
+        XCTAssertFalse(app.buttons["fitting.start"].exists)
+        XCTAssertFalse(app.buttons["fitting.switchCamera"].exists)
         app.buttons["fitting.sample"].tap()
-        XCTAssertTrue(app.staticTexts["샘플 배경 · 라이브 카메라가 아닙니다"].exists)
+        XCTAssertTrue(app.staticTexts["샘플 사진 · 합성 아님"].waitForExistence(timeout: 3))
+        let finished = NSPredicate { _, _ in
+            app.images["fitting.overlay"].exists || app.buttons["fitting.manual"].exists
+        }
+        expectation(for: finished, evaluatedWith: nil)
+        waitForExpectations(timeout: 15)
+        // Simulator pose runtime may be unavailable; explicit manual recovery is
+        // not evidence of automatic fitting success (covered separately in unit tests).
+        if app.buttons["fitting.manual"].exists { app.buttons["fitting.manual"].tap() }
         XCTAssertTrue(app.images["fitting.overlay"].exists)
-        XCTAssertFalse(app.switches["fitting.tracking"].isEnabled)
         let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "manual-fitting-sample-not-live"
+        attachment.name = "photo-fitting-sample-not-live"
         attachment.lifetime = .keepAlways
         add(attachment)
 
@@ -58,16 +64,13 @@ final class WEARyUITests: XCTestCase {
         for _ in 0..<4 where !app.buttons["fitting.reset"].isHittable { scrollFittingMargin(app, up: true) }
         app.buttons["fitting.reset"].tap()
         XCTAssertEqual(scale.value as? String, initialScale)
-        for _ in 0..<5 where !app.buttons["fitting.start"].isHittable { scrollFittingMargin(app, up: false) }
-#if targetEnvironment(simulator)
-        app.buttons["fitting.start"].tap()
-        XCTAssertTrue(app.staticTexts["이 환경에서는 선택한 카메라를 사용할 수 없어요. 샘플로 체험해 보세요."].waitForExistence(timeout: 3))
-        app.buttons["fitting.stop"].tap()
-#endif
+        for _ in 0..<5 where !app.buttons["fitting.clear"].isHittable { scrollFittingMargin(app, up: false) }
+        app.buttons["fitting.clear"].tap()
+        XCTAssertFalse(app.images["fitting.overlay"].exists)
         app.buttons["fitting.close"].tap()
         XCTAssertTrue(entry.waitForExistence(timeout: 3))
         entry.tap()
-        XCTAssertTrue(app.staticTexts["카메라를 켜거나 샘플 배경으로 체험하세요."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["한 명의 양쪽 어깨가 보이는 사진을 선택해 주세요. 상반신만 나와도 괜찮아요."].waitForExistence(timeout: 3))
         app.buttons["fitting.close"].tap()
     }
 
