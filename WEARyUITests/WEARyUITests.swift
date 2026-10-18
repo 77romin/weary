@@ -144,6 +144,40 @@ final class WEARyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["visibility.share"].isEnabled)
     }
 
+    func testCategoryVisibilitySampleUsesRealAnalysisAndDoesNotEnterPhotoMetrics() throws {
+        continueAfterFailure = false
+        let app = launchApp()
+        app.tabBars.buttons["MY"].tap()
+        for _ in 0..<10 where !app.buttons["profile.visibilityEvaluation"].isHittable { app.swipeUp() }
+        app.buttons["profile.visibilityEvaluation"].tap()
+        XCTAssertTrue(app.navigationBars["보이는 옷 종류 평가"].waitForExistence(timeout: 3))
+        app.buttons["visibility.sample"].tap()
+        XCTAssertTrue(app.images["visibility.preview"].exists)
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "category-visibility-photo-preview"
+        preview.lifetime = .keepAlways
+        add(preview)
+        for _ in 0..<5 where !app.switches["상의"].isHittable { app.swipeUp() }
+        app.switches["상의"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(app.switches["상의"].value as? String, "1")
+        let confirmation = app.switches["추천을 보기 전에 정답을 확인했어요"]
+        for _ in 0..<5 where !confirmation.isHittable { app.swipeUp() }
+        confirmation.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(confirmation.value as? String, "1")
+        for _ in 0..<5 where !app.buttons["visibility.evaluate"].isHittable { app.swipeUp() }
+        XCTAssertTrue(app.buttons["visibility.evaluate"].isEnabled)
+        app.buttons["visibility.evaluate"].tap()
+        XCTAssertTrue(app.staticTexts["visibility.completed"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.staticTexts["visibility.error"].exists)
+        let result = XCTAttachment(screenshot: app.screenshot())
+        result.name = "category-visibility-sample-result"
+        result.lifetime = .keepAlways
+        add(result)
+        for _ in 0..<6 where !app.buttons["visibility.share"].isHittable { app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["평가 사진 0장"].exists)
+        XCTAssertFalse(app.buttons["visibility.share"].isEnabled)
+    }
+
     func testCommunityAndMarketTabsHaveSeedContent() throws {
         continueAfterFailure = false
         let app = launchApp()

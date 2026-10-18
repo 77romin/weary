@@ -68,6 +68,9 @@
 - 사진과 특징값을 서버로 전송하지 않는 온디바이스 처리
 - MY의 추천 실험실에서 처리 시간·캐시·입력 품질 지표 확인
 - MY의 보이는 옷 종류 평가에서 추천·자동 선택의 오추천·누락과 정밀도·재현율·F1 측정 및 JSON 공유
+- 평가 사진 미리보기와 번들 샘플 체험 지원; 샘플은 실제 사진 평가 모음에서 제외
+- 카테고리 평가에서는 Vision 실행 실패와 정상 실행 후 빈 추천을 구분하며, 실행 실패는 정확도 집계에서 제외
+- 시뮬레이터의 Vision 이미지 분류·특징 추출은 검증된 CPU 경로 사용; 실기기 자동 하드웨어 선택은 유지 ([진단 근거](./VISION_RUNTIME_DIAGNOSTICS.md))
 - 후속 비전 판단용 카테고리 가시성 인터페이스: 보이지 않는 항목 제외, 불확실·누락 항목 자동 선택 해제
 - 실제 사진 분석 실패 시 데모 착장을 대신 추천하지 않고 직접 선택으로 연결
 
@@ -242,6 +245,7 @@ open WEARy.xcodeproj
 - [제품 정의](./PRODUCT_CONCEPT.md)
 - [포트폴리오 정리](./PORTFOLIO.md)
 - [문제 해결·의사결정 및 정량 근거 기록](./DEVELOPMENT_DECISIONS.md)
+- [Vision 시뮬레이터 런타임 진단](./VISION_RUNTIME_DIAGNOSTICS.md)
 - [데이터 경계와 ERD](./DATA_ARCHITECTURE.md)
 - [실시간 가상 피팅 구현 계획](./REALTIME_VIRTUAL_TRYON_PLAN.md)
 - [콘텐츠 안전 정책](./CONTENT_SAFETY_POLICY.md)

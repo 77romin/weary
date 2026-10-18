@@ -3,10 +3,51 @@ import Foundation
 import SwiftData
 import Testing
 import UIKit
+import Vision
+import CoreML
 @testable import WEARy
 
 @Suite("착장 기록 핵심 규칙")
 struct OutfitFlowTests {
+    /// Capability probe, not an accuracy test. Failures are reported by stage so
+    /// an unavailable simulator is never mistaken for a recognition miss.
+    @Test("Vision 런타임의 기본·CPU 실행 가능 여부를 단계별 진단한다")
+    func probeVisionRuntimeCapabilities() throws {
+        let data = try #require(solidImageData(red: 0.18, green: 0.42, blue: 0.76))
+        let image = try #require(UIImage(data: data)?.cgImage)
+        let factories: [(String, () -> VNRequest)] = [
+            ("classification", { VNClassifyImageRequest() }),
+            ("bodyPose", { VNDetectHumanBodyPoseRequest() }),
+            ("featurePrint", { VNGenerateImageFeaturePrintRequest() }),
+        ]
+        for (stage, makeRequest) in factories {
+            for cpuOnly in [false, true] {
+                let request = makeRequest()
+                let mode = cpuOnly ? "cpu" : "default"
+                do {
+                    if cpuOnly {
+                        let supported = try request.supportedComputeStageDevices
+                        guard let cpu = supported[.main]?.first(where: {
+                            if case .cpu = $0 { return true }
+                            return false
+                        }) else {
+                            print("VISION_RUNTIME stage=\(stage) mode=\(mode) status=cpu-unavailable")
+                            continue
+                        }
+                        request.setComputeDevice(cpu, for: .main)
+                    }
+                    try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+                    #expect(request.results != nil)
+                    print("VISION_RUNTIME stage=\(stage) mode=\(mode) status=success count=\(request.results?.count ?? 0)")
+                } catch {
+                    let failure = error as NSError
+                    // No image, wardrobe name, raw description or userInfo in the report.
+                    print("VISION_RUNTIME stage=\(stage) mode=\(mode) status=failed domain=\(failure.domain) code=\(failure.code)")
+                }
+            }
+        }
+    }
+
     @Test("카테고리 평가는 적중·오추천·누락과 비율을 계산한다")
     func categoryMetricsCountErrors() {
         let metrics = CategoryVisibilityMetrics.measure(truth: [.top, .bottom], predicted: [.top, .hat])
@@ -149,6 +190,36 @@ struct OutfitFlowTests {
             photoData: Data([0, 1, 2]), wardrobe: wardrobe
         )
         #expect(result.isEmpty)
+    }
+
+    @Test("평가 경로는 손상된 사진을 빈 예측으로 숨기지 않는다")
+    @MainActor
+    func evaluationPropagatesInvalidPhotoFailure() async {
+        do {
+            _ = try await DeviceOutfitAnalyzer().analyzeForEvaluation(
+                photoData: Data([0, 1, 2]),
+                wardrobe: [.init(id: UUID(), category: .top, name: "상의")])
+            Issue.record("손상된 사진은 평가 결과가 아닌 오류여야 한다")
+        } catch OutfitAnalysisError.invalidOutfitPhoto {
+            // Normal recording still returns [] for this input; evaluation must not.
+        } catch {
+            Issue.record("예상과 다른 오류: \(error)")
+        }
+    }
+
+    @Test("평가 경로는 비교 사진 없는 옷장을 실행 실패로 구분한다")
+    @MainActor
+    func evaluationPropagatesMissingReferenceImages() async throws {
+        let data = try #require(solidImageData(red: 0.18, green: 0.42, blue: 0.76))
+        do {
+            _ = try await DeviceOutfitAnalyzer().analyzeForEvaluation(
+                photoData: data,
+                wardrobe: [.init(id: UUID(), category: .top, name: "사진 없는 상의")])
+            Issue.record("비교 사진이 없으면 결과를 집계하면 안 된다")
+        } catch OutfitAnalysisError.noComparableGarmentImages {
+        } catch {
+            Issue.record("예상과 다른 오류: \(error)")
+        }
     }
 
     @Test("착장 사진 품질 검사는 사람·머리·발 노출을 구분한다")
@@ -402,7 +473,7 @@ struct OutfitFlowTests {
         #expect(result.map(\.selectedGarmentID) == [topID, bottomID])
     }
 
-    @Test("기기 분석기는 Vision 후보 또는 빈 결과를 반환한다")
+    @Test("기기 분석기는 실제 Vision 특징값 비교를 완료한다")
     @MainActor
     func deviceAnalyzerUsesVisionFeaturePrints() async throws {
         let garmentID = UUID()
@@ -415,12 +486,11 @@ struct OutfitFlowTests {
             cutoutImageData: imageData
         )]
 
-        let result = try await DeviceOutfitAnalyzer().analyze(
+        let result = try await DeviceOutfitAnalyzer().analyzeForEvaluation(
             photoData: imageData,
             wardrobe: wardrobe
         )
-        // Simulator Vision availability varies. Failure must not invent demo items.
-        guard let group = result.first else { return }
+        let group = try #require(result.first)
 
 #if targetEnvironment(simulator)
         #expect(group.source == .vision)
