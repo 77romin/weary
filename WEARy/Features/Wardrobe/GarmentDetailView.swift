@@ -25,7 +25,9 @@ struct GarmentDetailView: View {
 
                 VStack(alignment: .leading, spacing: 24) {
                     identitySection
-                    virtualFittingEntry
+                    DisclosureGroup("AI 실험 · MVP 제외") {
+                        virtualFittingEntry.padding(.top, 8)
+                    }
                     metricsSection
                     informationSection
                     historySection
@@ -100,7 +102,7 @@ struct GarmentDetailView: View {
             .disabled(garment.category != .top || fittingImage == nil)
             .accessibilityIdentifier("garment.tryOn")
             Text(garment.category == .top && fittingImage != nil
-                 ? "내 사진을 선택하면 상의를 자동 배치해요. 자연스러운 합성은 아직 아니에요."
+                 ? "개발 보류 중인 사진 배치 실험이에요. 자연스러운 합성은 지원하지 않아요."
                  : "현재는 사진이 있는 상의만 지원해요.")
                 .font(.caption).foregroundStyle(.secondary)
         }

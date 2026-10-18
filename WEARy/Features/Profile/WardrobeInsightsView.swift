@@ -90,6 +90,7 @@ struct WardrobeInsightsView: View {
 }
 
 struct AIRecommendationInsightsView: View {
+    @Query private var fittingGarments: [Garment]
     let summary: AIRecommendationSummary
     @ObservedObject private var diagnostics = OutfitAnalysisDiagnostics.shared
     @ObservedObject private var photoQuality = OutfitPhotoQualityDiagnostics.shared
@@ -100,13 +101,32 @@ struct AIRecommendationInsightsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI 추천 실험실", systemImage: "sparkles")
+                Label("AI 실험", systemImage: "sparkles")
                     .font(.headline)
                 Spacer()
                 Label("기기에만 저장", systemImage: "lock.fill")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(WEARyTheme.secondaryInk)
             }
+
+            Text("MVP와 분리된 실험 기능이에요. 가상 피팅 개발은 잠시 보류합니다.")
+                .font(.caption).foregroundStyle(.secondary)
+            NavigationLink {
+                List {
+                    Section {
+                        Text("사진 위에 상의를 배치하는 기존 실험입니다. 자연스러운 착용 합성은 미지원이며 개발은 보류 중입니다.")
+                            .font(.caption)
+                    }
+                    Section("실험할 상의") {
+                        ForEach(fittingGarments.filter { $0.category == .top }) { garment in
+                            NavigationLink(garment.name) { GarmentDetailView(garment: garment) }
+                        }
+                    }
+                }.navigationTitle("사진 피팅 · 보류")
+            } label: {
+                Label("사진 피팅 · 개발 보류", systemImage: "person.crop.rectangle")
+            }
+            .accessibilityIdentifier("profile.aiExperiments")
 
             Button("반복 분석 성능 비교") { showingBenchmark = true }
                 .font(.subheadline.weight(.semibold))
