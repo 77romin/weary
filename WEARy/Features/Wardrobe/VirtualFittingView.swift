@@ -13,6 +13,16 @@ struct FittingOverlayPlacement: Equatable {
         if let scale, scale.isFinite { self.scale = min(max(scale, 0.2), 1) }
     }
     mutating func reset() { self = Self() }
+    mutating func resize(by factor: CGFloat) {
+        guard factor.isFinite, factor > 0 else { return }
+        update(scale: scale * factor)
+    }
+    mutating func move(by translation: CGSize, in photoSize: CGSize) {
+        guard photoSize.width.isFinite, photoSize.height.isFinite,
+              photoSize.width > 0, photoSize.height > 0 else { return }
+        update(x: x + translation.width / photoSize.width,
+               y: y + translation.height / photoSize.height)
+    }
     static func automatic(rect: CGRect) -> Self {
         var result = Self()
         result.update(x: rect.midX, y: rect.midY, scale: rect.width)
@@ -86,7 +96,6 @@ struct VirtualFittingView: View {
     @StateObject private var model = FittingPhotoModel()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var sampleTask: Task<Void, Never>?
-    @State private var dragOrigin: FittingOverlayPlacement?
 
     var body: some View {
         NavigationStack {
@@ -122,11 +131,11 @@ struct VirtualFittingView: View {
                             .accessibilityIdentifier("fitting.manual")
                     }
                     if model.photo != nil && model.showsOverlay {
-                        Text("배치된 옷을 끌거나 아래 조절기로 보정하세요.").font(.caption)
+                        Text("한 손가락으로 옷을 옮기고, 두 손가락으로 오므리거나 펼쳐 크기를 조절하세요. 아래 조절기로 세밀하게 보정할 수도 있어요.").font(.caption)
                         adjustment("크기", value: Binding(get: { model.placement.scale }, set: { model.placement.update(scale: $0) }), range: 0.2...1, id: "fitting.scale")
                         adjustment("가로 위치", value: Binding(get: { model.placement.x }, set: { model.placement.update(x: $0) }), range: 0...1, id: "fitting.x")
                         adjustment("세로 위치", value: Binding(get: { model.placement.y }, set: { model.placement.update(y: $0) }), range: 0...1, id: "fitting.y")
-                        Button("위치·크기 초기화") { model.resetPlacement(); dragOrigin = nil }
+                        Button("위치·크기 초기화") { model.resetPlacement() }
                             .accessibilityIdentifier("fitting.reset")
                     }
                     Text("사진은 이 화면의 메모리에서만 처리하며 저장·서버 전송·착용 횟수 반영을 하지 않아요. 선택한 사진의 방향을 유지하며 추가 좌우 반전을 하지 않아요. 배경이 제거되지 않은 옷은 배경도 함께 표시돼요.")
@@ -159,15 +168,16 @@ struct VirtualFittingView: View {
                         let width = frame.width * model.placement.scale
                         Image(uiImage: image).resizable().scaledToFit()
                             .frame(width: width, height: width * image.size.height / max(image.size.width, 1))
+                            .overlay {
+                                FittingGestureSurface(
+                                    onMove: { model.placement.move(by: $0, in: frame.size) },
+                                    onResize: { model.placement.resize(by: $0) })
+                                    .accessibilityHidden(true)
+                            }
                             .position(x: frame.minX + frame.width * model.placement.x,
                                       y: frame.minY + frame.height * model.placement.y)
-                            .gesture(DragGesture().onChanged { value in
-                                let origin = dragOrigin ?? model.placement
-                                if dragOrigin == nil { dragOrigin = origin }
-                                model.placement.update(x: origin.x + value.translation.width / max(frame.width, 1),
-                                                       y: origin.y + value.translation.height / max(frame.height, 1))
-                            }.onEnded { _ in dragOrigin = nil })
                             .accessibilityLabel("선택한 옷 겹쳐보기")
+                            .accessibilityHint("한 손가락으로 이동, 두 손가락으로 크기 조절. 아래 슬라이더로도 조절할 수 있습니다.")
                             .accessibilityIdentifier("fitting.overlay")
                     }
                 } else {
@@ -188,6 +198,51 @@ struct VirtualFittingView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption)
             Slider(value: value, in: range).accessibilityLabel(title).accessibilityIdentifier(id)
+        }
+    }
+}
+
+/// Explicit touch counts keep a two-finger pinch from also moving the garment.
+/// Incremental deltas avoid stale gesture origins after reset or photo changes.
+private struct FittingGestureSurface: UIViewRepresentable {
+    let onMove: (CGSize) -> Void
+    let onResize: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.move(_:)))
+        pan.minimumNumberOfTouches = 1
+        pan.maximumNumberOfTouches = 1
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.resize(_:)))
+        pan.delegate = context.coordinator
+        pinch.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
+        view.addGestureRecognizer(pinch)
+        return view
+    }
+    func updateUIView(_ uiView: UIView, context: Context) { context.coordinator.parent = self }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: FittingGestureSurface
+        init(parent: FittingGestureSurface) { self.parent = parent }
+        @objc func move(_ recognizer: UIPanGestureRecognizer) {
+            guard recognizer.state == .began || recognizer.state == .changed,
+                  recognizer.numberOfTouches == 1 else { return }
+            let delta = recognizer.translation(in: nil)
+            recognizer.setTranslation(.zero, in: nil)
+            parent.onMove(CGSize(width: delta.x, height: delta.y))
+        }
+        @objc func resize(_ recognizer: UIPinchGestureRecognizer) {
+            guard recognizer.state == .began || recognizer.state == .changed else { return }
+            let factor = recognizer.scale
+            recognizer.scale = 1
+            parent.onResize(factor)
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            gestureRecognizer.view === otherGestureRecognizer.view
         }
     }
 }

@@ -47,18 +47,31 @@ final class WEARyUITests: XCTestCase {
         // not evidence of automatic fitting success (covered separately in unit tests).
         if app.buttons["fitting.manual"].exists { app.buttons["fitting.manual"].tap() }
         XCTAssertTrue(app.images["fitting.overlay"].exists)
+        let scale = app.sliders["fitting.scale"]
+        let initialScale = scale.value as? String
+        let overlay = app.images["fitting.overlay"]
+        let originalFrame = overlay.frame
+        overlay.pinch(withScale: 1.25, velocity: 1)
+        XCTAssertGreaterThan(overlay.frame.width, originalFrame.width + 5)
+        XCTAssertEqual(overlay.frame.midX, originalFrame.midX, accuracy: 4)
+        let enlargedWidth = overlay.frame.width
+        overlay.pinch(withScale: 0.8, velocity: -1)
+        XCTAssertLessThan(overlay.frame.width, enlargedWidth - 5)
+        let beforeDrag = overlay.frame
+        let start = overlay.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 25, dy: 15)))
+        XCTAssertGreaterThan(overlay.frame.midX, beforeDrag.midX + 10)
+        XCTAssertEqual(overlay.frame.width, beforeDrag.width, accuracy: 3)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "photo-fitting-sample-not-live"
         attachment.lifetime = .keepAlways
         add(attachment)
 
-        let scale = app.sliders["fitting.scale"]
         for _ in 0..<6 {
             if scale.isHittable && scale.frame.maxY < app.frame.maxY - 100 { break }
             scrollFittingMargin(app, up: true)
         }
         XCTAssertLessThan(scale.frame.maxY, app.frame.maxY - 100)
-        let initialScale = scale.value as? String
         scale.adjust(toNormalizedSliderPosition: 0.95)
         XCTAssertNotEqual(scale.value as? String, initialScale)
         for _ in 0..<4 where !app.buttons["fitting.reset"].isHittable { scrollFittingMargin(app, up: true) }

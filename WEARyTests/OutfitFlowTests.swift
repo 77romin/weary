@@ -144,6 +144,31 @@ struct OutfitFlowTests {
         #expect(model.photo == nil && model.errorMessage != nil && !model.isLoading)
     }
 
+    @Test("피팅 제스처는 배율과 사진 기준 이동량을 누적하고 비정상 값을 거부한다")
+    func fittingGesturesApplyIncrementalPhotoRelativeDeltas() {
+        var placement = FittingOverlayPlacement()
+        placement.resize(by: 1.2)
+        #expect(abs(placement.scale - 0.78) < 0.0001)
+        placement.resize(by: 0.5)
+        #expect(abs(placement.scale - 0.39) < 0.0001)
+        placement.move(by: CGSize(width: 30, height: -20), in: CGSize(width: 300, height: 200))
+        #expect(abs(placement.x - 0.6) < 0.0001)
+        #expect(abs(placement.y - 0.32) < 0.0001)
+        let before = placement
+        placement.resize(by: .nan)
+        placement.resize(by: -1)
+        placement.resize(by: 0)
+        placement.move(by: CGSize(width: 20, height: 20), in: .zero)
+        placement.move(by: CGSize(width: CGFloat.nan, height: CGFloat.infinity), in: CGSize(width: 300, height: 200))
+        #expect(placement == before)
+        placement.resize(by: 100)
+        #expect(placement.scale == 1)
+        placement.resize(by: 0.001)
+        #expect(placement.scale == 0.2)
+        placement.move(by: CGSize(width: -1000, height: 1000), in: CGSize(width: 300, height: 200))
+        #expect(placement.x == 0 && placement.y == 1)
+    }
+
     @Test("수동 피팅 위치와 크기는 화면 기준 범위로 제한한다")
     func fittingPlacementClampsToViewport() {
         var placement = FittingOverlayPlacement()
