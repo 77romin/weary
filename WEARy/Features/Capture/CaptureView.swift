@@ -285,6 +285,7 @@ struct CaptureView: View {
                 .tint(.white)
 
                 VStack(alignment: .leading, spacing: 12) {
+                    if MVPFeatures.socialEnabled {
                     Toggle("커뮤니티에 공개", isOn: $publishToFeed)
                         .font(.subheadline.weight(.bold))
                         .tint(WEARyTheme.lime)
@@ -302,6 +303,7 @@ struct CaptureView: View {
                         PublicPhotoConsentSection(consent: $publicationConsent)
                             .tint(WEARyTheme.lime)
                             .foregroundStyle(.white)
+                    }
                     }
                     Text("개인 착장 기록은 기본적으로 나만 볼 수 있어요.")
                         .font(.caption).foregroundStyle(.white.opacity(0.55))
@@ -525,7 +527,7 @@ struct CaptureView: View {
         }
         do {
             try modelContext.save()
-            guard publishToFeed, let photoData else {
+            guard MVPFeatures.socialEnabled, publishToFeed, let photoData else {
                 phase = .saved
                 return
             }

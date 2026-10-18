@@ -32,7 +32,7 @@ struct GarmentDetailView: View {
                     informationSection
                     historySection
                     statusSection
-                    sellButton
+                    if MVPFeatures.socialEnabled { sellButton }
                     deleteButton
                 }
                 .padding(20)

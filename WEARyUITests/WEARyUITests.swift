@@ -15,6 +15,27 @@ final class WEARyUITests: XCTestCase {
         (up ? bottom : top).press(forDuration: 0.05, thenDragTo: up ? top : bottom)
     }
 
+    func testMVPShowsOnlyWardrobeCaptureAndMy() throws {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.buttons["옷장"].isSelected)
+        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        XCTAssertTrue(app.tabBars.buttons["기록"].exists)
+        XCTAssertTrue(app.tabBars.buttons["MY"].exists)
+        XCTAssertFalse(app.tabBars.buttons["피드"].exists)
+        XCTAssertFalse(app.tabBars.buttons["마켓"].exists)
+        app.tabBars.buttons["MY"].tap()
+        XCTAssertFalse(app.buttons["profile.contentMode"].exists)
+        XCTAssertFalse(app.buttons["profile.blockedUsers"].exists)
+        XCTAssertFalse(app.buttons["profile.notices"].exists)
+        app.tabBars.buttons["옷장"].tap()
+        let search = app.searchFields.firstMatch
+        if !search.isHittable { app.swipeDown() }
+        search.tap()
+        search.typeText("화이트 베이비 티")
+        app.buttons["wardrobe.garment.화이트 베이비 티"].tap()
+        XCTAssertFalse(app.buttons["이 옷 판매하기"].exists)
+    }
+
     func testVirtualFittingManualPreviewAndReset() throws {
         continueAfterFailure = false
         let app = launchApp()
@@ -27,6 +48,7 @@ final class WEARyUITests: XCTestCase {
         let garment = app.buttons["wardrobe.garment.화이트 베이비 티"]
         XCTAssertTrue(garment.waitForExistence(timeout: 3))
         garment.tap()
+        app.buttons["AI 실험 · MVP 제외"].tap()
         let entry = app.buttons["garment.tryOn"]
         XCTAssertTrue(entry.waitForExistence(timeout: 3))
         XCTAssertTrue(entry.isEnabled)
@@ -106,6 +128,7 @@ final class WEARyUITests: XCTestCase {
         search.tap()
         search.typeText("커브드 데님")
         app.buttons["wardrobe.garment.커브드 데님"].tap()
+        app.buttons["AI 실험 · MVP 제외"].tap()
         let entry = app.buttons["garment.tryOn"]
         XCTAssertTrue(entry.waitForExistence(timeout: 3))
         XCTAssertFalse(entry.isEnabled)

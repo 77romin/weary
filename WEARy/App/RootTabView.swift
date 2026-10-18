@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Release scope only. Implementations and persisted social data are retained.
+enum MVPFeatures {
+    static let socialEnabled = false
+}
+
 enum SocialContentMode: String, CaseIterable, Identifiable {
     case live
     case demo
@@ -24,13 +29,15 @@ enum SocialContentMode: String, CaseIterable, Identifiable {
 }
 
 struct RootTabView: View {
-    @State private var selectedTab: AppTab = .feed
+    @State private var selectedTab: AppTab = .wardrobe
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            if MVPFeatures.socialEnabled {
             FeedView()
                 .tabItem { Label("피드", systemImage: "rectangle.stack") }
                 .tag(AppTab.feed)
+            }
 
             WardrobeView()
                 .tabItem { Label("옷장", systemImage: "hanger") }
@@ -40,9 +47,11 @@ struct RootTabView: View {
                 .tabItem { Label("기록", systemImage: "camera.fill") }
                 .tag(AppTab.capture)
 
+            if MVPFeatures.socialEnabled {
             MarketView()
                 .tabItem { Label("마켓", systemImage: "bag") }
                 .tag(AppTab.market)
+            }
 
             ProfileView()
                 .tabItem { Label("MY", systemImage: "person") }

@@ -48,6 +48,7 @@ struct ProfileView: View {
                         .accessibilityLabel("내 정보 수정")
                         .accessibilityIdentifier("profile.account")
 
+                        if MVPFeatures.socialEnabled {
                         HStack(spacing: 0) {
                             socialCountButton(
                                 value: followerUsers.count,
@@ -63,13 +64,15 @@ struct ProfileView: View {
                         }
                         .padding(.vertical, 12)
                         .background(WEARyTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+                        }
 
                         HStack(spacing: 10) {
                             MetricPill(value: "\(garments.count)", label: "옷")
                             MetricPill(value: "\(outfits.count)", label: "착장")
-                            MetricPill(value: "\(myPosts.count)", label: "게시물")
+                            if MVPFeatures.socialEnabled { MetricPill(value: "\(myPosts.count)", label: "게시물") }
                         }
 
+                        if MVPFeatures.socialEnabled {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("소셜 데이터")
                                 .font(.headline)
@@ -116,6 +119,7 @@ struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("profile.blockedUsers")
+                        }
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("이번 달의 발견")
@@ -150,6 +154,7 @@ struct ProfileView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("프로토타입 도구")
                                 .font(.headline)
+                            if MVPFeatures.socialEnabled {
                             Text("리허설 중 바뀐 착장, 좋아요와 판매 상태를 처음 상태로 되돌려요.")
                                 .font(.caption)
                                 .foregroundStyle(WEARyTheme.secondaryInk)
@@ -159,6 +164,7 @@ struct ProfileView: View {
                             .buttonStyle(.bordered)
                             .disabled(contentMode != .demo)
                             .accessibilityIdentifier("profile.resetDemo")
+                            }
 
                             Button {
                                 showsOnboardingReplay = true
@@ -175,15 +181,16 @@ struct ProfileView: View {
                     .padding(20)
                 }
                 .refreshable {
-                    if contentMode == .live {
+                    if MVPFeatures.socialEnabled && contentMode == .live {
                         await loadRemoteSocialGraph()
-                    } else {
+                    } else if MVPFeatures.socialEnabled {
                         SampleDataSeeder.seedIfNeeded(in: modelContext)
                     }
                 }
             }
             .navigationTitle("MY")
             .toolbar {
+                if MVPFeatures.socialEnabled {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingNotices = true
@@ -197,6 +204,7 @@ struct ProfileView: View {
                         : "알림"
                     )
                     .accessibilityIdentifier("profile.notices")
+                }
                 }
             }
             .sheet(item: $selectedSocialList) { kind in
@@ -231,7 +239,7 @@ struct ProfileView: View {
                 Text(demoResetMessage ?? "")
             }
             .task(id: contentModeRaw) {
-                if contentMode == .live {
+                if MVPFeatures.socialEnabled && contentMode == .live {
                     await loadRemoteSocialGraph()
                     await loadUnreadNoticeCount()
                 } else {

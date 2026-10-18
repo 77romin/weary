@@ -91,7 +91,7 @@ private enum OnboardingPage: Int, CaseIterable, Identifiable {
         switch self {
         case .wardrobe: "옷을 산 순간부터\n기록해요"
         case .record: "오늘 입은 옷을\n사진 한 장으로"
-        case .discovery: "내 취향을 발견하고\n다음 옷장으로"
+        case .discovery: MVPFeatures.socialEnabled ? "내 취향을 발견하고\n다음 옷장으로" : "내 취향을 발견하고\n더 자주 입어요"
         }
     }
 
@@ -102,7 +102,7 @@ private enum OnboardingPage: Int, CaseIterable, Identifiable {
         case .record:
             "AI가 내 옷장에서 후보를 찾고\n내가 확인한 옷만 착용 기록에 남겨요."
         case .discovery:
-            "달력과 통계로 자주 입는 옷을 찾고\n안 입는 옷은 판매 글로 이어보세요."
+            MVPFeatures.socialEnabled ? "달력과 통계로 자주 입는 옷을 찾고\n안 입는 옷은 판매 글로 이어보세요." : "달력과 통계로 자주 입는 옷을 찾고\n잊고 있던 옷도 다시 꺼내 입어요."
         }
     }
 
@@ -217,11 +217,11 @@ private struct OnboardingArtwork: View {
                 .font(.headline.bold())
 
             VStack(spacing: 9) {
-                Image(systemName: "tag.fill")
+                Image(systemName: MVPFeatures.socialEnabled ? "tag.fill" : "arrow.clockwise")
                     .font(.title2)
                     .foregroundStyle(WEARyTheme.coral)
                 asset("DemoRedBag", width: 116, height: 120)
-                Text("다음 옷장으로")
+                Text(MVPFeatures.socialEnabled ? "다음 옷장으로" : "다시 꺼내 입기")
                     .font(.caption.weight(.bold))
             }
             .frame(width: 145, height: 220)

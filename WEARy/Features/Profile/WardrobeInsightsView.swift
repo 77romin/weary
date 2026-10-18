@@ -647,9 +647,11 @@ struct WardrobeReviewView: View {
             HStack(spacing: 8) {
                 actionButton("유지", status: .keep, garment: garment)
                 actionButton("보관", status: .stored, garment: garment)
-                Button("판매하기") { listingGarment = garment }
+                if MVPFeatures.socialEnabled {
+                    Button("판매하기") { listingGarment = garment }
                     .font(.caption.weight(.bold))
                     .buttonStyle(.borderedProminent).tint(WEARyTheme.ink)
+                }
             }
         }
         .padding(16)
